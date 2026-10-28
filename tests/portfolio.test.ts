@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import {groupCampaignSchedule,channelHealth,readLocal,changesKey,collectPortfolioRows,getTaskStatus,setTaskStatus,shiftTask,resizeTask,packSchedule,transferTask,taskBucket,readWorkspace,publishWorkspace,DATA_EVENT} from '../src/portfolio.ts';
+import {noRecurrence,type Task} from '../src/work.ts';
+const task:Task={id:'a',title:'Campaign action',campaign:'campaign',discipline:'Content Marketing',start:'2026-10-27',due:'2026-10-30',priority:'High',done:false};
+let tasksA=[task],tasksB:Task[]=[];let companies=[{id:'u:a',name:'Company A'},{id:'u:b',name:'Company B'}];let campaigns=[{id:'campaign',name:'Autumn launch'}];
+const rows=()=>collectPortfolioRows(companies,id=>id==='u:a'?tasksA:tasksB,id=>id==='u:a'?campaigns:[],[]);
+assert.equal(rows().length,1,'Unmapped tasks must feed the overview automatically');assert.equal(rows()[0].task,task);
+tasksA=[{...task,due:'2026-11-04',discipline:'Email Marketing',brand:'Brand A'}];campaigns=[{id:'campaign',name:'Renamed launch'}];companies=[{id:'u:a',name:'Renamed company'},{id:'u:b',name:'Company B'}];
+assert.equal(rows()[0].task.due,'2026-11-04');assert.equal(rows()[0].channel,'Email Marketing');assert.equal(rows()[0].campaignName,'Renamed launch');assert.equal(rows()[0].company,'Renamed company');assert.equal(rows()[0].task.brand,'Brand A');
+tasksA=[{...tasksA[0],channel:'LinkedIn'}];assert.equal(rows()[0].channel,'LinkedIn');
+const progressing=setTaskStatus([task],'a','In progress','2026-10-28');assert.equal(getTaskStatus(progressing[0]),'In progress');assert.equal(progressing[0].done,false);
+const done=setTaskStatus(progressing,'a','Done','2026-10-30');assert.equal(getTaskStatus(done[0]),'Done');assert.equal(done[0].done,true);assert.equal(setTaskStatus(done,'a','In review','2026-10-30')[0].done,false);
+const recurring={...task,recurrence:{...noRecurrence,mode:'weekly' as const,days:[5]}};const completed=setTaskStatus([recurring],'a','Done','2026-10-30');assert.equal(completed.length,2);assert.equal(completed[0].due,'2026-11-06');assert.equal(getTaskStatus(completed[0]),'To do');assert.equal(getTaskStatus(completed[1]),'Done');assert.deepEqual(setTaskStatus(completed,completed[1].id,'In progress','2026-10-30'),completed);
+const moved=shiftTask(task,5);assert.equal(moved.start,'2026-11-01');assert.equal(moved.due,'2026-11-04');assert.equal(task.due,'2026-10-30');
+assert.equal(resizeTask(task,'start','2026-11-03').start,'2026-10-30');assert.equal(resizeTask(task,'end','2026-10-01').due,'2026-10-27');assert.equal(resizeTask(task,'end','2026-11-02').start,'2026-10-27');
+const transfers=transferTask(completed,[],{...completed[0],campaign:'',groupId:'',overviewId:undefined});assert.equal(transfers.source.length,0);assert.equal(transfers.target.length,2);assert.equal(transfers.target[1].occurrenceOf,'a');assert.equal(transfers.target[1].campaign,'');assert.throws(()=>transferTask([task],[task],task));
+const row=rows()[0],packed=packSchedule([{...row,task:{...task,start:'2026-10-25',due:'2026-10-28'}},{...row,task:{...task,id:'b',start:'2026-10-27',due:'2026-10-29'}},{...row,task:{...task,id:'c',start:'2026-10-29',due:'2026-11-03'}}],'2026-10-26',7);
+assert.equal(packed[0].from,0);assert.equal(packed[0].startsHere,false);assert.notEqual(packed[0].lane,packed[1].lane);assert.equal(packed[2].lane,packed[0].lane);assert.equal(packed[2].to,6);assert.equal(packed[2].endsHere,false);
+assert.equal(taskBucket(task,'2026-10-28'),'Due this week');assert.equal(taskBucket({...task,due:'2026-10-27'},'2026-10-28'),'Overdue');assert.equal(taskBucket({...task,done:true},'2026-10-28'),'Completed');
+const storage=new Map<string,string>();Object.defineProperty(globalThis,'localStorage',{value:{getItem:(key:string)=>storage.get(key)||null,setItem:(key:string,value:string)=>storage.set(key,value)}});Object.defineProperty(globalThis,'window',{value:new EventTarget()});let notifications=0;window.addEventListener(DATA_EVENT,()=>notifications++);publishWorkspace('u:a','theory.tasks.v1',[task]);publishWorkspace('u:b','theory.tasks.v1',[moved]);assert.equal(readWorkspace<Task[]>('u:a','theory.tasks.v1',[])[0].due,'2026-10-30');assert.equal(readWorkspace<Task[]>('u:b','theory.tasks.v1',[])[0].due,'2026-11-04');assert.equal(notifications,2);
+
+const groups=groupCampaignSchedule([{...row,workspace:'u:a',task:{...task,id:'a'}},{...row,workspace:'u:a',task:{...task,id:'b'}},{...row,workspace:'u:b',task:{...task,id:'c'}}]);assert.equal(groups.length,2);assert.equal(groups.find(g=>g.rows.length===2)?.rows.length,2,'Gantt groups campaign tasks and isolates company IDs');
+const configured={id:'brand',name:row.task.brand!,workspace:row.workspace,channels:['LinkedIn','Email']};
+assert.equal(channelHealth(configured,'Email',[{...row,channel:'Email',task:{...row.task,due:'2026-11-20',start:'2026-11-20'}}],'2026-10-26',7,'2026-10-28').state,'Gap');
+assert.equal(channelHealth(configured,'Website',[],'2026-10-26',7,'2026-10-28').state,'Not used');
+assert.equal(channelHealth(configured,'Email',[{...row,channel:'Email',task:{...row.task,due:'2026-10-27'}}],'2026-10-26',7,'2026-10-28').state,'Overdue');
+const checklistTask={...recurring,checklist:[{id:'check',title:'Approve artwork',done:true}]};const checklistNext=setTaskStatus([checklistTask],'a','Done','2026-10-30');assert.equal(checklistNext[0].checklist?.[0].done,false);assert.equal(checklistNext[1].checklist?.[0].done,true);
+publishWorkspace('u:a','theory.tasks.v1',[{...task,channel:'Email',checklist:[{id:'item',title:'Proofread',done:true}]}]);const audit=readLocal<any[]>(changesKey('u'),[]);assert.ok(audit.some(c=>c.taskId==='a'&&c.after?.channel==='Email'&&c.fields.includes('Checklist')));assert.equal(audit[0].afterWorkspace,'u:a');
+console.log('Automatic task feeds, live labels, board completion, recurrence, resize, lane packing, workspace transfer and notifications passed');
+
+const sharedBusinessRow={...row,channel:'Email',task:{...row.task,brand:'Old display label',unitIds:['stable-one','stable-two']}};
+assert.equal(channelHealth({...configured,id:'stable-one',name:'Renamed business'},'Email',[sharedBusinessRow],'2026-10-26',7,'2026-10-28').count,1);
+assert.equal(channelHealth({...configured,id:'stable-two',name:'Second business'},'Email',[sharedBusinessRow],'2026-10-26',7,'2026-10-28').count,1);
+assert.equal(channelHealth({...configured,id:'unrelated'},'Email',[sharedBusinessRow],'2026-10-26',7,'2026-10-28').count,0);

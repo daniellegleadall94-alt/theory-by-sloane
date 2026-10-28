@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {nextOccurrence,completeTask,noRecurrence} from '../src/work.ts';
+const r=(extra:object)=>({...noRecurrence,...extra});
+assert.equal(nextOccurrence('2026-10-23',r({mode:'weekdays'})),'2026-10-26');
+assert.equal(nextOccurrence('2026-10-22',r({mode:'daily'})),'2026-10-23');
+assert.equal(nextOccurrence('2026-10-22',r({mode:'weekly',days:[1,3],anchor:'2026-10-22'})),'2026-10-26');
+assert.equal(nextOccurrence('2026-10-19',r({mode:'weekly',interval:2,days:[1,3],anchor:'2026-10-19'})),'2026-10-21');
+assert.equal(nextOccurrence('2026-10-21',r({mode:'weekly',interval:2,days:[1,3],anchor:'2026-10-19'})),'2026-11-02');
+assert.equal(nextOccurrence('2027-01-31',r({mode:'monthly',anchor:'2027-01-31'})),'2027-02-28');
+assert.equal(nextOccurrence('2027-02-28',r({mode:'monthly',anchor:'2027-01-31'})),'2027-03-31');
+assert.equal(nextOccurrence('2028-02-29',r({mode:'annually',anchor:'2028-02-29'})),'2029-02-28');
+assert.equal(nextOccurrence('2026-10-22',r({mode:'custom',interval:10,unit:'days'})),'2026-11-01');
+assert.equal(nextOccurrence('2026-10-22',r({mode:'custom',interval:3,unit:'months'})),'2027-01-22');
+const task={id:'1',title:'Recurring',due:'2026-10-22',campaign:'c1',discipline:'SEO',priority:'High',groupId:'g1',done:false,recurrence:r({mode:'daily'})};
+const result=completeTask([task],'1','2026-10-22T12:00:00Z');
+assert.equal(result.length,2);assert.equal(result[0].due,'2026-10-23');assert.equal(result[0].done,false);assert.equal(result[1].done,true);assert.equal(result[1].occurrenceOf,'1');assert.equal(result[1].groupId,'g1');assert.equal(result[1].campaign,'c1');
+assert.deepEqual(completeTask(result,result[1].id,'2026-10-23'),result);
+console.log('Recurrence and completion checks passed');

@@ -1,0 +1,3 @@
+export const settingsGroups=[{name:'PERSONAL',items:['My Profile','Login & Security','Notifications','Appearance & Preferences']},{name:'ORGANISATION',items:['Organisation Details','Brands & Businesses','Team & Permissions','Workspaces & Defaults']},{name:'SUBSCRIPTION',items:['Plan & Billing','Payment Methods','Invoices & Usage']},{name:'CONNECTIONS',items:['Email Configuration','Connected Apps','AI & Integrations']},{name:'DATA & PRIVACY',items:['Data Management','Activity & Audit Logs','Account Closure']},{name:'HELP',items:['Help & Support']}];
+export const settingsPage=(name:string)=>'Settings / '+name;
+export const isSettingsPage=(page:string)=>page==='Workspace settings'||page.startsWith('Settings / ');
