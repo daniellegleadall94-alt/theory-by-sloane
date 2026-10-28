@@ -7,7 +7,7 @@ export type PortfolioWorkspace={id:string;name:string};
 export type PortfolioRow={task:Task;workspace:string;company:string;campaignName:string;projectName:string;channel:string};
 export const taskChannel=(task:Task,normalise:(name:string)=>string=(name=>name))=>task.channel?.trim()||(task.discipline==='Marketing'?'General marketing':normalise(task.discipline));
 export function collectPortfolioRows(workspaces:PortfolioWorkspace[],tasksFor:(workspace:string)=>Task[],campaignsFor:(workspace:string)=>{id:string;name:string}[],plans:MarketingPlan[],normalise:(name:string)=>string=(name=>name)):PortfolioRow[]{
- return workspaces.flatMap(w=>tasksFor(w.id).map(task=>({task,workspace:w.id,company:w.name,campaignName:campaignsFor(w.id).find(c=>c.id===task.campaign)?.name||'',projectName:plans.find(plan=>plan.id===task.overviewId&&plan.workspace===w.id)?.name||'',channel:taskChannel(task,normalise)})));
+ return workspaces.flatMap(w=>tasksFor(w.id).filter(t=>!t.archived).map(task=>({task,workspace:w.id,company:w.name,campaignName:campaignsFor(w.id).find(c=>c.id===task.campaign)?.name||'',projectName:plans.find(plan=>plan.id===task.overviewId&&plan.workspace===w.id)?.name||'',channel:taskChannel(task,normalise)})));
 }
 export const getTaskStatus=(task:Task):TaskStatus=>task.done?'Done':task.status&&task.status!=='Done'?task.status:'To do';
 export const taskStart=(task:Task)=>task.start&&task.start<=task.due?task.start:task.due;

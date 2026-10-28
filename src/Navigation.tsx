@@ -16,7 +16,7 @@ const groups=[
  {name:'THE WORK',items:[{id:'Marketing Disciplines',label:'Marketing Disciplines',icon:Globe},{id:'Marketing Tools',label:'Marketing Tools',icon:Wrench}]},
  {name:'KNOWLEDGE & PERFORMANCE',items:[{id:'Reporting & Analytics',label:'Reporting & Analytics',icon:ChartNoAxesCombined},{id:'Files & Knowledge',label:'Files & Knowledge',icon:BookOpen}]}
 ];
-const workItems=[{id:'My Work',label:'Overview',icon:BriefcaseBusiness},{id:'My Inbox',label:'Inbox',icon:Inbox},{id:'My Calendar',label:'Calendar',icon:CalendarDays},{id:'My Planner',label:'The List',icon:ListTodo},{id:'Notes & Ideas',label:'Notes & Ideas',icon:StickyNote},{id:'My Learning',label:'My Learning',icon:GraduationCap}];
+const workItems=[{id:'My Work',label:'Overview',icon:BriefcaseBusiness},{id:'My Inbox',label:'Inbox',icon:Inbox},{id:'My Calendar',label:'Calendar',icon:CalendarDays},{id:'My Planner',label:'The List',icon:ListTodo},{id:'Notes & Ideas',label:'Notes & Ideas',icon:StickyNote},{id:'My Learning',label:'My Learning',icon:GraduationCap},{id:'Workload',label:'Workload',icon:ChartNoAxesCombined}];
 export const navigationLabel=(page:string)=>isSettingsPage(page)?page==='Workspace settings'?'My Profile':page.slice(11):page==='My Planner'?'The List':page==='My Inbox'?'Inbox':page==='My Calendar'?'Calendar':page;
 type Props=WorkNavigationProps&{portfolioTasks:Task[];page:string;collapsed:boolean;setCollapsed:(value:boolean)=>void;mobile:boolean;setMobile:(value:boolean)=>void;go:(page:string)=>void;inboxCount:number;filter:string;setFilter:(filter:string)=>void;discipline:string;setDiscipline:(name:string)=>void;campaigns:{id:string;name:string}[];selected:string|null;selectCampaign:(id:string|null)=>void};
 export function Navigation(p:Props){
