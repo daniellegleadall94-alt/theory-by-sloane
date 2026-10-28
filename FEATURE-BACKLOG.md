@@ -36,14 +36,14 @@ Capacity counts effort once for the accountable owner, not once per contributor.
 | Complete | Subtasks, followers, custom fields, task templates | Canonical assignable child tasks with inherited privacy and completion checks; authorised followers; typed fields; private/shared reusable templates. Advanced controls stay in details. |
 | Complete / extension | Shared views and bulk actions | Shared views and date filters are delivered. Current bulk work-date/priority/archive edits have preview and undo. Additional assignment/list/status bulk operations remain an optional extension. |
 | Complete / extension | Dependency scheduling | Gantt connectors, milestone indicators, locked deadlines and confirmed forward rescheduling are delivered. Lag/lead and recurring-occurrence bindings remain future enhancements. |
-| P2 | Request intake → triage → task conversion | First complete cross-module workflow: internal request forms, ownership, statuses, deduplicated conversion, activity and notifications. No cosmetic request-only dashboard. |
+| Complete | Request intake → triage → task conversion | First complete cross-module workflow: internal request forms, ownership, statuses, deduplicated conversion, activity and notifications. No cosmetic request-only dashboard. |
 | P2 | Rules engine and playbooks | Workspace-scoped triggers, conditions, actions, dry run, audit, loop prevention and permission rechecks. Reuse tasks/requests; do not run arbitrary code. |
 | P2 | Content planning and approvals | Asset versions, approval ownership, review comments, explicit approved/published states and a shared marketing calendar. Completion is not proof of publication. |
 | P2 | Campaign health and portfolio | Derive operational risks from approved definitions; distinguish scheduling health from real campaign outcomes. Add campaign-level recurring reviews. |
 | P3 | Measurement, budgets and marketing reviews | Ingest verified results with provenance, date ranges and brand/channel ownership. Separate planned/committed/actual spend, objectives, attribution and review decisions. |
 | P3 | Documented integrations, proofing and AI | Provider-specific authentication and capabilities, token security, failure/retry states and explicit user control. No simulated integrations or unsupported automatic publishing. |
 
-Phase 2 has not been started. Request intake, rules, playbooks, content approvals and subsequent roadmap phases remain for review.
+The requested Phase 2 Marketing Request Centre is implemented; see PHASE-TWO.md. Rules, playbooks, content approvals and other expansion-roadmap items were outside this focused Phase 2 brief and remain future work. Phase 3 has not been started.
 
 ## Verification and local review
 
