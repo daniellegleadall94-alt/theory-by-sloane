@@ -1,10 +1,17 @@
 export const palettes={
+ // Original Theory surfaces, sage accents and light sidebar; muted text meets current contrast checks.
+ original:{name:'Original Theory',bg:'#F8F9F6',surface:'#FFFFFF',ink:'#292C29',muted:'#5F6759',line:'#E8EAE3',primary:'#343C2E',accent:'#849276',soft:'#E0E6D7',sidebar:'#F0F2EB',sidebarInk:'#292C29'},
  clay:{name:'Clay and olive',bg:'#F3F0E8',surface:'#FFFFFF',ink:'#1E1C18',muted:'#5A554C',line:'#DCD5C7',primary:'#2F3B2F',accent:'#B5562E',soft:'#E5E9DD',sidebar:'#232B24',sidebarInk:'#EEECE4'},
  sand:{name:'Sand and terracotta',bg:'#F5EFE6',surface:'#FFFDF9',ink:'#231C17',muted:'#5F5348',line:'#E0D3C1',primary:'#7A3B22',accent:'#C9822B',soft:'#F2E1D2',sidebar:'#FFFDF9',sidebarInk:'#231C17'},
  stone:{name:'Stone and slate',bg:'#F0F0EC',surface:'#FFFFFF',ink:'#1A1D20',muted:'#555B62',line:'#D5D7D2',primary:'#2D3741',accent:'#A0562F',soft:'#E1E6E9',sidebar:'#1F262D',sidebarInk:'#F0F0EC'},
  heather:{name:'Heather and rust',bg:'#F2EFEF',surface:'#FFFFFF',ink:'#1F1A22',muted:'#5B5361',line:'#DAD3D9',primary:'#43384F',accent:'#A65640',soft:'#E8E2EA',sidebar:'#2A2330',sidebarInk:'#F2EFEF'},
+ office:{name:'Office blue',bg:'#F5F5F5',surface:'#FFFFFF',ink:'#242424',muted:'#616161',line:'#D1D1D1',primary:'#0F6CBD',accent:'#0078D4',soft:'#EBF3FC',sidebar:'#FAFAFA',sidebarInk:'#242424'},
+ violet:{name:'Workspace violet',bg:'#F5F5FA',surface:'#FFFFFF',ink:'#242424',muted:'#5F5F6B',line:'#D7D7E0',primary:'#5B5FC7',accent:'#464EB8',soft:'#E8EBFA',sidebar:'#F3F2F8',sidebarInk:'#242424'},
+ teal:{name:'Corporate teal',bg:'#F3F7F7',surface:'#FFFFFF',ink:'#202D2D',muted:'#526565',line:'#D3DFDF',primary:'#006A6A',accent:'#007E87',soft:'#DDF1F0',sidebar:'#F0F6F6',sidebarInk:'#202D2D'},
+ neutral:{name:'Classic neutral',bg:'#F5F5F5',surface:'#FFFFFF',ink:'#202020',muted:'#5C5C5C',line:'#D7D7D7',primary:'#3B3B3B',accent:'#0067B8',soft:'#EDEDED',sidebar:'#FAFAFA',sidebarInk:'#242424'},
  night:{name:'Night',bg:'#151613',surface:'#1E1F1B',ink:'#EDEAE2',muted:'#A9A498',line:'#373832',primary:'#C8D3B5',accent:'#E0895C',soft:'#283024',sidebar:'#0F100D',sidebarInk:'#EDEAE2'}
 };
+export const paletteDescriptions:Partial<Record<keyof typeof palettes,string>>={original:'The original soft sage, white and light sidebar.',office:'Microsoft-inspired blue with clean, neutral surfaces.',violet:'A familiar collaboration-workspace violet.',teal:'A clean business palette with teal accents.',neutral:'Simple white and grey with a blue accent.'};
 export type Theme={preset:keyof typeof palettes;primary?:string;accent?:string;contrast:'soft'|'balanced'|'strong';sidebar:'default'|'light'|'dark';corners:'sharp'|'soft'|'round';motion:'full'|'reduced'};
 export const defaultTheme:Theme={preset:'clay',contrast:'balanced',sidebar:'default',corners:'soft',motion:'full'};
 const rgb=(hex:string)=>hex.slice(1).match(/../g)!.map(x=>parseInt(x,16));
