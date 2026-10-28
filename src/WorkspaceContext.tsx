@@ -4,8 +4,8 @@ import {DATA_EVENT,publishStoredKey,readLocal,readWorkspace,type PortfolioBrand}
 import type {Task} from './work';
 import type {MarketingPlan} from './overview';
 
-export type BusinessUnit={logo?:string;description?:string;website?:string;socialReferences?:string;contactInformation?:string;responsibleUserIds?:string[];id:string;organisation_id:string;name:string;kind:string;archived:boolean;channels:string[];parent_id?:string};
-export type Organisation={id:string;name:string;role:string;access_scope:string;unitLabel:string;disciplines:string[];units:BusinessUnit[];subscription:null|{status:string;plan:string;trial_started_at:string;trial_ends_at:string}};
+export type BusinessUnit={colour?:string;logo?:string;description?:string;website?:string;socialReferences?:string;contactInformation?:string;responsibleUserIds?:string[];id:string;organisation_id:string;name:string;kind:string;archived:boolean;channels:string[];parent_id?:string};
+export type Organisation={colour?:string;id:string;name:string;role:string;access_scope:string;unitLabel:string;disciplines:string[];units:BusinessUnit[];subscription:null|{status:string;plan:string;trial_started_at:string;trial_ends_at:string}};
 export type ScopedRecord={id:string;organisationId?:string|null;unitIds?:string[];assigneeIds?:string[];ownerId?:string;version?:number;kind?:string;[key:string]:unknown};
 type Selection={mode:'workspace'|'all-my-work';units:Record<string,string[]>};
 const kinds:Record<string,string>={'theory.tasks.v1':'task','theory.campaigns.v1':'campaign','theory.workGroups.v1':'group','theory.resources.v1':'resource','theory.objectives.v1':'objective','theory.kpis.v1':'kpi','theory.files.v1':'file','theory.activities.v1':'post','theory.expenses.v1':'expense'};

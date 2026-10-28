@@ -1,3 +1,4 @@
+import {useTaskActions} from './taskActions';
 import React from 'react';
 import {BusinessAssociation} from './OrganisationManagement';
 import {DATA_EVENT,publishStoredKey} from './portfolio';
@@ -18,6 +19,7 @@ const read=<T,>(key:string,fallback:T):T=>{try{return JSON.parse(localStorage.ge
 const label=(date:string)=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
 
 export function StrategyOverview(p:Props){
+ const taskAction=useTaskActions();
  const {user,workspaceKey,workspaceName}=useCompany();const context=useWorkspace();
  const today=new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'});
  const planKey=`theory.marketing-overviews.v1:${user?.id||'guest'}`;
@@ -46,7 +48,7 @@ export function StrategyOverview(p:Props){
  const currentRows=visible.filter(r=>!r.task.occurrenceOf&&(!p.scopeBrand||(r.task.brand||workspaceLabel(r.workspace))===p.scopeBrand));const history=visible.filter(r=>r.task.occurrenceOf);
  const newPlan=()=>{setPlanDraft({id:crypto.randomUUID(),name:'',workspace:workspaceKey,unitIds:context.inherit(),verticals:[],created:today});setError('')};
  const newTask=(plan:MarketingPlan,vertical=plan.verticals[0]?.name||'',horizon='immediate')=>{setEditor({workspace:plan.workspace,task:{id:crypto.randomUUID(),title:'',unitIds:plan.unitIds||context.inherit(),overviewId:plan.id,discipline:vertical,horizon,campaign:'',due:today,start:today,priority:'Medium',done:false,plannerAllocated:false,recurrence:horizon==='recurring'?{...noRecurrence,mode:'weekly',days:[new Date(today+'T12:00:00Z').getUTCDay()]}:undefined}});setError('')};
- const complete=(row:Row)=>updateTasks(row.workspace,tasks=>completeTask(tasks,row.task.id,new Date().toISOString()));
+ const complete=(row:Row)=>{void taskAction(row.workspace,row.task,'complete').catch(e=>setError(e.message))};
  const allocate=(row:Row)=>{if(updateTasks(row.workspace,tasks=>tasks.map(t=>t.id===row.task.id?{...t,plannerAllocated:true}:t)))setMessage(`“${row.task.title}” is now in The List for ${workspaceLabel(row.workspace)}.`)};
  const drop=(event:React.DragEvent,date:string)=>{event.preventDefault();try{const {workspace,id}=JSON.parse(event.dataTransfer.getData('application/x-theory-task'));const row=currentRows.find(r=>r.workspace===workspace&&r.task.id===id);if(!row||row.task.done)return;if(updateTasks(workspace,tasks=>tasks.map(t=>t.id===id?moveTask(t,date):t)))setMessage(`Moved “${row.task.title}” to ${label(date)}.`)}catch{/* Ignore unrelated dropped content. */}};
  const drag=(event:React.DragEvent,row:Row)=>{event.dataTransfer.setData('application/x-theory-task',JSON.stringify({workspace:row.workspace,id:row.task.id}));event.dataTransfer.effectAllowed='move'};

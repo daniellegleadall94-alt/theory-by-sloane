@@ -1,13 +1,14 @@
 export type Recurrence={mode:'none'|'daily'|'weekdays'|'weekly'|'monthly'|'annually'|'custom';interval:number;unit:'days'|'weeks'|'months'|'years';days:number[];anchor?:string;startDate?:string;endDate?:string;count?:number;completed?:number;basis?:'scheduled'|'completion';paused?:boolean;monthDay?:number;month?:number;ordinal?:number;weekday?:number;monthlyPattern?:'date'|'weekday';timeZone?:string};
 export type WorkGroup={unitIds?:string[];id:string;name:string;parentId:string;order?:number;archived?:boolean;colour?:string;icon?:string;visibility?:'private'|'shared';sharedWith?:string[];ownerId?:string;version?:number};
 export type Task=PlannerFields&{unitIds?:string[];organisationId?:string|null;assigneeIds?:string[];ownerId?:string;version?:number;organisationName?:string;campaignName?:string;id:string;title:string;campaign:string;discipline:string;due:string;priority:string;done:boolean;groupId?:string;recurrence?:Recurrence;occurrenceOf?:string;completedAt?:string;overviewId?:string;horizon?:string;start?:string;plannerAllocated?:boolean;status?:'To do'|'In progress'|'In review'|'Done';channel?:string;brand?:string;checklist?:{id:string;title:string;done:boolean}[]};
-export type PlannerFields={description?:string;important?:boolean;plannedDate?:string;myDay?:string;myDayUserIds?:Record<string,string>;reminderAt?:string;reminderTimeZone?:string;accountableOwnerId?:string;contributorIds?:string[];createdAt?:string;order?:number;comments?:{id:string;text:string;userId:string;name:string;at:string}[];attachments?:{id:string;name:string;url:string}[];skipped?:boolean;seriesDefaults?:Partial<Task>;visibility?:'private'|'shared';sharedWith?:string[]};
+export type PlannerFields={completedBy?:string;completedByName?:string;scheduledDue?:string;description?:string;important?:boolean;plannedDate?:string;myDay?:string;myDayUserIds?:Record<string,string>;reminderAt?:string;reminderTimeZone?:string;accountableOwnerId?:string;contributorIds?:string[];createdAt?:string;order?:number;comments?:{id:string;text:string;userId:string;name:string;at:string}[];attachments?:{id:string;name:string;url:string}[];skipped?:boolean;seriesDefaults?:Partial<Task>;visibility?:'private'|'shared';sharedWith?:string[]};
 export const noRecurrence:Recurrence={mode:'none',interval:1,unit:'days',days:[]};
 const parse=(s:string)=>new Date(s+'T12:00:00Z');
 const iso=(d:Date)=>d.toISOString().slice(0,10);
 const shift=(s:string,n:number)=>{const d=parse(s);d.setUTCDate(d.getUTCDate()+n);return iso(d)};
+export const validTaskDate=(day:unknown):day is string=>typeof day==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(day)&&!Number.isNaN(parse(day).getTime())&&iso(parse(day))===day;
 function nextDate(due:string,r:Recurrence):string|null{
- if(!/^\d{4}-\d{2}-\d{2}$/.test(due)||Number.isNaN(parse(due).getTime()))return null;
+ if(!validTaskDate(due))return null;
  if(r.mode==='none'||r.paused)return null;
  const step=Math.min(365,Math.max(1,Math.floor(r.interval||1)));
  if(r.mode==='daily')return shift(due,1);
@@ -54,17 +55,17 @@ export function completeTask(tasks:Task[],id:string,at:string):Task[]{
  let task=tasks.find(t=>t.id===id);if(!task||task.occurrenceOf)return tasks;
  if(!task.done&&task.recurrence&&task.recurrence.mode!=='none'){
   const r={...task.recurrence,anchor:task.recurrence.anchor||task.due};
-  const basis=r.basis==='completion'?localDay(at,r.timeZone):task.due;const next=nextOccurrence(basis,r);
+  const basis=r.basis==='completion'?localDay(at,r.timeZone):task.scheduledDue||task.due;const next=nextOccurrence(basis,{...r,paused:false});
   const history={...task,id:crypto.randomUUID(),done:true,status:'Done' as const,recurrence:undefined,seriesDefaults:undefined,occurrenceOf:task.id,completedAt:at};
   if(next){const duration=task.start?Math.max(0,Math.round((parse(task.due).getTime()-parse(task.start).getTime())/86400000)):0;
    const offset=Math.round((parse(next).getTime()-parse(task.due).getTime())/86400000);
    const reminder=task.reminderAt?new Date(Date.parse(task.reminderAt)+offset*86400000):undefined;
    if(reminder&&task.reminderTimeZone){const zone=task.reminderTimeZone;const old=new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(task.reminderAt!));try{task={...task,reminderAt:reminderInstant(localDay(reminder.toISOString(),zone)+'T'+old,zone)}}catch{task={...task,reminderAt:undefined}}}
    else task={...task,reminderAt:reminder?.toISOString()};
-   const defaults=task.seriesDefaults||{};
-   return [...tasks.map(t=>t.id===id?{...task,...defaults,id:t.id,due:next,start:task.start?shift(next,-duration):undefined,plannedDate:undefined,myDay:undefined,myDayUserIds:{},done:false,completedAt:undefined,status:'To do' as const,checklist:(defaults.checklist||t.checklist)?.map(item=>({...item,done:false})),recurrence:{...r,completed:(r.completed||0)+1},seriesDefaults:undefined}:t),history];
+   const current:Task=task;const defaults=task.seriesDefaults||{};
+   return [...tasks.map(t=>t.id===id?{...current,...defaults,id:t.id,due:next,scheduledDue:undefined,start:current.start?shift(next,-duration):undefined,plannedDate:undefined,myDay:undefined,myDayUserIds:{},done:false,completedAt:undefined,status:'To do' as const,checklist:(defaults.checklist||t.checklist)?.map(item=>({...item,done:false})),recurrence:{...r,completed:(r.completed||0)+1},seriesDefaults:undefined}:t),history];
   }
-  if(!r.paused)return [...tasks.filter(t=>t.id!==id),{...history,id:task.id,occurrenceOf:undefined,recurrence:{...r,mode:'none'}}];
+  return [...tasks.filter(t=>t.id!==id),{...history,id:task.id,occurrenceOf:task.id,recurrence:undefined}];
  }
  return tasks.map(t=>t.id===id?{...t,done:!t.done,status:t.done?'To do':'Done',completedAt:t.done?undefined:at}:t);
 }

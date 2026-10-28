@@ -1,0 +1,18 @@
+// Metadata only. No password, token, recovery-code or secret fields are accepted.
+export const accountFields=new Set(['title','description','category','folder','favourite','loginUrl','username','purpose','accountOwnerId','responsibleUserIds','accessMode','authorisedUserIds','permissionGroupIds','accessExpiresAt','accessMethod','provider','providerUrl','mfaStatus','recoveryContact','lastReview','nextReview','status','discoverable','rotationRequired','reviewTaskId','unitIds','assigneeIds','id','version','organisationId','ownerId','updatedAt','kind']);
+export function validateAccount(data,{fail,org,userId,member,existing}){
+ for(const key of Object.keys(data))if(!accountFields.has(key))fail(400,'The account register accepts non-sensitive account information only. Store passwords, recovery codes and tokens in your password manager.');
+ for(const [key,max] of Object.entries({title:180,description:3000,category:100,folder:100,username:254,purpose:1000,recoveryContact:254,loginUrl:2000,providerUrl:2000}))if(data[key]!==undefined&&(typeof data[key]!=='string'||data[key].length>max))fail(400,'Check the account information.');
+ if(data.loginUrl){let url;try{url=new URL(data.loginUrl)}catch{fail(400,'Enter a valid HTTPS login URL.')}if(url.protocol!=='https:'||url.username||url.password||url.hash||url.search)fail(400,'Use an HTTPS login address without embedded credentials, query parameters or fragments.');}
+ if(data.providerUrl){let url;try{url=new URL(data.providerUrl)}catch{fail(400,'Copy a private item link from 1Password.')}if(url.protocol!=='https:'||!/^([a-z0-9-]+\.)?1password\.(com|eu|ca)$/.test(url.hostname)||url.port||url.username||url.password||url.hash||url.pathname!=='/open/i'||[...url.searchParams.keys()].some(k=>!['a','v','i','h'].includes(k)))fail(400,'Use a 1Password private item link. Public sharing links and links containing secrets are not supported.');if(url.searchParams.get('h')&&!/^([a-z0-9-]+\.)?1password\.(com|eu|ca)$/.test(url.searchParams.get('h')))fail(400,'Choose a private item link for a 1Password account.');for(const k of ['a','v','i'])if(url.searchParams.has(k)&&!/^[-a-zA-Z0-9_]{1,100}$/.test(url.searchParams.get(k)))fail(400,'Copy the original private item link from 1Password.');}
+ if(data.provider&&!['none','1password'].includes(data.provider))fail(400,'Choose a supported provider reference.');
+ if(data.accessMode&&!['restricted','named','brand','organisation','groups'].includes(data.accessMode))fail(400,'Choose a supported access policy.');
+ if(data.accessMode==='brand'&&!data.unitIds?.length)fail(400,'Select brands for brand access.');
+ for(const key of ['authorisedUserIds','responsibleUserIds'])if(data[key]!==undefined&&(!Array.isArray(data[key])||data[key].length>100||data[key].some(id=>org?!member(id,org):id!==userId)))fail(400,'Select members of the owning workspace.');
+ if(data.accountOwnerId&&(org?!member(data.accountOwnerId,org):data.accountOwnerId!==userId))fail(400,'Choose an account owner in this workspace.');
+ if(data.permissionGroupIds&&(!Array.isArray(data.permissionGroupIds)||data.permissionGroupIds.some(id=>typeof id!=='string')))fail(400,'Choose valid permission groups.');
+ if(data.accessExpiresAt&&!Number.isFinite(Date.parse(data.accessExpiresAt)))fail(400,'Choose a valid access expiry.');
+ for(const date of [data.lastReview,data.nextReview])if(date&&(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date))))fail(400,'Choose valid review dates.');
+
+ return data;
+}
