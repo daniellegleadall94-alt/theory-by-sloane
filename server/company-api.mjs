@@ -1,3 +1,4 @@
+import {createOwnerLayer} from './owner-api.mjs';
 import {createWorkflowLayer} from './workflow-api.mjs';
 import {createRequestLayer} from './request-api.mjs';
 import {createTaskImportLayer} from './task-import-api.mjs';
@@ -16,7 +17,7 @@ const scrypt=promisify(derive);
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const email=value=>String(value||'').trim().toLowerCase();
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
-export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,socialOptions}={}){
+export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,socialOptions,ownerOptions}={}){
  if(databasePath!==':memory:')mkdirSync(dirname(databasePath),{recursive:true});
  const db=new DatabaseSync(databasePath);db.exec(`PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
  CREATE TABLE IF NOT EXISTS companies(id TEXT PRIMARY KEY,name TEXT NOT NULL);
@@ -35,7 +36,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
  db.exec('CREATE TABLE IF NOT EXISTS note_preferences(note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id),pinned INTEGER NOT NULL DEFAULT 0,archived INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(note_id,user_id))');
  const workspaceLayer=createWorkspaceLayer(db);const workManagement=createWorkManagementLayer(db,workspaceLayer);const taskImports=createTaskImportLayer(db,workspaceLayer);const aiLayer=createAiLayer(db,{databasePath,fetchImpl:aiFetch});const socialAuth=createSocialAuth(db,socialOptions);
  const validLogo=value=>{if(value==='')return true;if(typeof value!=='string'||value.length>48000||!/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(value))return false;const bytes=Buffer.from(value.split(',')[1],'base64');return bytes.length>=20&&bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'};
- const settingsLayer=createSettingsLayer(db,{workspaceLayer,validLogo});const vaultLayer=createVaultLayer(db,workspaceLayer,{audit:settingsLayer.audit});const requestLayer=createRequestLayer(db,workspaceLayer);const workflowLayer=createWorkflowLayer(db,workspaceLayer,requestLayer);const attempts=new Map();
+ const settingsLayer=createSettingsLayer(db,{workspaceLayer,validLogo});const vaultLayer=createVaultLayer(db,workspaceLayer,{audit:settingsLayer.audit});const requestLayer=createRequestLayer(db,workspaceLayer);const workflowLayer=createWorkflowLayer(db,workspaceLayer,requestLayer);const ownerLayer=createOwnerLayer(db,ownerOptions);const attempts=new Map();
  const profile=user=>({avatar:JSON.parse(one('SELECT profile FROM user_settings WHERE user_id=?',user.id)?.profile||'{}').avatar||'',id:user.id,name:user.name,email:user.email,role:user.role,personalNickname:user.personal_nickname||'',personalLogo:one('SELECT personal_logo FROM users WHERE id=?',user.id)?.personal_logo||'',company:user.company_id?{id:user.company_id,name:one('SELECT name FROM companies WHERE id=?',user.company_id).name,logo:one('SELECT logo FROM companies WHERE id=?',user.company_id).logo,nickname:one('SELECT nickname FROM memberships WHERE user_id=? AND company_id=?',user.id,user.company_id)?.nickname||''}:null,companies:all('SELECT companies.id,companies.name,companies.logo,memberships.role,memberships.nickname FROM memberships JOIN companies ON companies.id=memberships.company_id WHERE user_id=? ORDER BY companies.name',user.id)});
  function noteResult(row,user){return {...JSON.parse(row.data),organisationId:row.company_id,organisationName:one('SELECT name FROM companies WHERE id=?',row.company_id).name,...{pinned:!!one('SELECT pinned FROM note_preferences WHERE note_id=? AND user_id=?',row.id,user.id)?.pinned,archived:!!one('SELECT archived FROM note_preferences WHERE note_id=? AND user_id=?',row.id,user.id)?.archived},id:row.id,ownerId:row.owner_id,ownerName:one('SELECT name FROM users WHERE id=?',row.owner_id).name,version:row.version,sharedWith:all('SELECT user_id FROM note_shares WHERE note_id=?',row.id).map(x=>x.user_id),canEdit:row.owner_id===user.id}}
  function owned(id,user){const row=one('SELECT * FROM notes WHERE id=? AND company_id=? AND owner_id=?',id,user.company_id,user.id);if(!row||!workspaceLayer.canUnits(user.id,user.company_id,JSON.parse(row.data).unitIds||[]))fail(404,'Note not found or you do not own it.');return row}
@@ -51,13 +52,15 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
     if(!origin||origin!==`${protocol}//${req.headers.host}`)fail(403,'Request origin is not allowed.');
     if(!String(req.headers['content-type']||'').startsWith('application/json'))fail(415,'Use a JSON request.');
    }
+   if(await ownerLayer.handle({req,res,path,send,bodyOf})!==false)return;
    const token=String(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('theory_session='))?.slice(15);
    const account=token?one('SELECT users.*,sessions.active_company_id FROM sessions JOIN users ON users.id=sessions.user_id WHERE token=? AND expires>?',hash(token),Date.now()):null;
    const membership=account?.active_company_id?one('SELECT role FROM memberships WHERE user_id=? AND company_id=?',account.id,account.active_company_id):null;
    let user=account?{...account,company_id:membership?account.active_company_id:null,role:membership?.role||'personal'}:null;
+   if(user&&one('SELECT suspended FROM user_restrictions WHERE user_id=?',user.id)?.suspended){run('DELETE FROM sessions WHERE user_id=?',user.id);user=null;}
    auditUser=user;
    const cookie=(value,maxAge)=>{const previous=res.getHeader('Set-Cookie');res.setHeader('Set-Cookie',[...(Array.isArray(previous)?previous:previous?[previous]:[]),`theory_session=${value}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${req.socket.encrypted?'; Secure':''}`])};
-   const session=(account)=>{const value=randomBytes(32).toString('hex');run('DELETE FROM sessions WHERE expires<?',Date.now());run('INSERT INTO sessions(token,user_id,expires,active_company_id,created_at) VALUES(?,?,?,?,?)',hash(value),account.id,Date.now()+7*86400000,account.company_id,Date.now());cookie(value,604800);return profile(account)};
+   const session=(account)=>{if(one('SELECT suspended FROM user_restrictions WHERE user_id=?',account.id)?.suspended)fail(403,'This account is suspended. Contact Theory support.');const value=randomBytes(32).toString('hex');run('DELETE FROM sessions WHERE expires<?',Date.now());run('INSERT INTO sessions(token,user_id,expires,active_company_id,created_at) VALUES(?,?,?,?,?)',hash(value),account.id,Date.now()+7*86400000,account.company_id,Date.now());cookie(value,604800);return profile(account)};
    if(await socialAuth.handle({req,res,path,user,token,bodyOf,send,session})!==false)return;
    if(path==='/api/session'&&req.method==='GET')return send(200,{user:user?profile(user):null});
    if(['/api/auth/register','/api/auth/login'].includes(path)&&req.method==='POST'){

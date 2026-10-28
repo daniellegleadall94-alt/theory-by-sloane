@@ -1,3 +1,4 @@
+import {OwnerConsole} from './OwnerConsole';
 import {WorkflowStudio,CampaignPlaybookBrief} from './WorkflowStudio';
 import {RequestCentre,RequestPortal} from './RequestCentre';
 import {AccountShortcuts} from './AccountShortcuts';
@@ -104,7 +105,7 @@ return <div className={'app '+(preferences.density==='compact'?'density-compact 
 }
 function WorkspaceApp(){const {ready:themeReady}=useTheme();const {workspaceKey,loading}=useCompany();const workspace=useWorkspace();const {ready:preferencesReady}=useAccountPreferences();if(loading||!workspace.ready||!preferencesReady||!themeReady)return <div className="workspace-loading" role="status">Opening your workspace…</div>;return <App key={workspaceKey}/>;}
 function Entry(){const readToken=()=>new URLSearchParams(window.location.hash.slice(1)).get('request-access');const [token,setToken]=React.useState(readToken);React.useEffect(()=>{const changed=()=>setToken(readToken());window.addEventListener('hashchange',changed);return()=>window.removeEventListener('hashchange',changed)},[]);return token?<RequestPortal token={token}/>:<WorkspaceApp/>;}
-createRoot(document.getElementById('root')!).render(<React.StrictMode><CompanyProvider><AccountPreferences><ThemeProvider><WorkspaceProvider><Entry/></WorkspaceProvider></ThemeProvider></AccountPreferences></CompanyProvider></React.StrictMode>);
+createRoot(document.getElementById('root')!).render(<React.StrictMode>{window.location.pathname==='/owner'||window.location.pathname.startsWith('/owner/')?<OwnerConsole/>:<CompanyProvider><AccountPreferences><ThemeProvider><WorkspaceProvider><Entry/></WorkspaceProvider></ThemeProvider></AccountPreferences></CompanyProvider>}</React.StrictMode>);
 
 
 
