@@ -1,0 +1,11 @@
+import React from 'react';
+import {companyApi,useCompany} from './Company';
+import {useWorkspace} from './WorkspaceContext';
+import {TaskImport} from './TaskImport';
+import type {Task} from './work';
+export function PlannerAdvancedTools({onCreate}:{onCreate:(task:Task)=>void}){
+ const {user}=useCompany(),context=useWorkspace(),org=context.allMyWork?null:user?.company?.id||null;
+ const [open,setOpen]=React.useState(false),[templates,setTemplates]=React.useState<{id:string;title:string;blueprint:Partial<Task>;visibility:string}[]>([]),[selected,setSelected]=React.useState(''),[error,setError]=React.useState('');
+ const load=async()=>{if(user)try{setTemplates((await companyApi<{records:typeof templates}>(`${org?'organisations/'+org:'personal'}/data/template`)).records)}catch(e){setError((e as Error).message)}};
+ return <details className="planner-advanced-tools" onToggle={e=>{if(e.currentTarget.open)void load()}}><summary>Advanced tools · templates & spreadsheet import</summary><p>Keep quick capture simple. Reuse a saved template or validate spreadsheet tasks before adding them.</p>{user?<><div className="work-inline"><label>Task template<select value={selected} onChange={e=>setSelected(e.target.value)}><option value="">Choose a template</option>{templates.map(t=><option key={t.id} value={t.id}>{t.title}{t.visibility==='shared'?' · Shared':''}</option>)}</select></label><button className="secondary" disabled={!selected} onClick={()=>{const template=templates.find(t=>t.id===selected);if(template)onCreate({...template.blueprint,id:crypto.randomUUID(),title:template.blueprint.title||template.title,due:'',done:false,campaign:'',discipline:template.blueprint.discipline||'Marketing',priority:template.blueprint.priority||'Medium',unitIds:context.allMyWork?[]:context.inherit(),assigneeIds:[user.id],accountableOwnerId:user.id,checklist:template.blueprint.checklist?.map(c=>({...c,id:crypto.randomUUID(),done:false})),plannerAllocated:true})}}>Use template</button><button className="secondary" onClick={()=>setOpen(true)}>Import Excel / CSV</button></div><small>Save a template from the advanced section of any task’s details.</small></>:<p>Sign in to import tasks and save reusable templates.</p>}{error&&<p className="company-error">{error}</p>}{open&&<TaskImport onClose={()=>setOpen(false)}/>}</details>;
+}

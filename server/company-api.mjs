@@ -1,3 +1,4 @@
+import {createTaskImportLayer} from './task-import-api.mjs';
 import {createWorkManagementLayer} from './work-management-api.mjs';
 import {createVaultLayer} from './vault-api.mjs';
 import {createSettingsLayer} from './settings-api.mjs';
@@ -30,7 +31,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
  if(!all('PRAGMA table_info(users)').some(c=>c.name==='personal_logo'))db.exec("ALTER TABLE users ADD COLUMN personal_logo TEXT NOT NULL DEFAULT ''");
  if(!all('PRAGMA table_info(companies)').some(c=>c.name==='logo'))db.exec("ALTER TABLE companies ADD COLUMN logo TEXT NOT NULL DEFAULT ''");
  db.exec('CREATE TABLE IF NOT EXISTS note_preferences(note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id),pinned INTEGER NOT NULL DEFAULT 0,archived INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(note_id,user_id))');
- const workspaceLayer=createWorkspaceLayer(db);const workManagement=createWorkManagementLayer(db,workspaceLayer);const aiLayer=createAiLayer(db,{databasePath,fetchImpl:aiFetch});const socialAuth=createSocialAuth(db,socialOptions);
+ const workspaceLayer=createWorkspaceLayer(db);const workManagement=createWorkManagementLayer(db,workspaceLayer);const taskImports=createTaskImportLayer(db,workspaceLayer);const aiLayer=createAiLayer(db,{databasePath,fetchImpl:aiFetch});const socialAuth=createSocialAuth(db,socialOptions);
  const validLogo=value=>{if(value==='')return true;if(typeof value!=='string'||value.length>48000||!/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(value))return false;const bytes=Buffer.from(value.split(',')[1],'base64');return bytes.length>=20&&bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'};
  const settingsLayer=createSettingsLayer(db,{workspaceLayer,validLogo});const vaultLayer=createVaultLayer(db,workspaceLayer,{audit:settingsLayer.audit});const attempts=new Map();
  const profile=user=>({avatar:JSON.parse(one('SELECT profile FROM user_settings WHERE user_id=?',user.id)?.profile||'{}').avatar||'',id:user.id,name:user.name,email:user.email,role:user.role,personalNickname:user.personal_nickname||'',personalLogo:one('SELECT personal_logo FROM users WHERE id=?',user.id)?.personal_logo||'',company:user.company_id?{id:user.company_id,name:one('SELECT name FROM companies WHERE id=?',user.company_id).name,logo:one('SELECT logo FROM companies WHERE id=?',user.company_id).logo,nickname:one('SELECT nickname FROM memberships WHERE user_id=? AND company_id=?',user.id,user.company_id)?.nickname||''}:null,companies:all('SELECT companies.id,companies.name,companies.logo,memberships.role,memberships.nickname FROM memberships JOIN companies ON companies.id=memberships.company_id WHERE user_id=? ORDER BY companies.name',user.id)});
@@ -81,6 +82,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
     if(accountNote[3]==='preferences')fail(405,'Method not allowed.');user={...user,company_id:row.company_id,role:membership.role};auditUser=user;explicitNoteScope=true;path='/api/company-notes/'+row.id+(accountNote[3]==='shares'?'/shares':'');
    }
    if(await vaultLayer.handle({req,path,user,send,bodyOf})!==false)return;
+   if(await taskImports.handle({req,path,user,bodyOf,send})!==false)return;
    if(await workManagement.handle({req,path,user,bodyOf,send})!==false)return;
    if(await workspaceLayer.handle({req,path,user,send,bodyOf})!==false)return;
    if(path==='/api/auth/logout'&&req.method==='POST'){run('DELETE FROM sessions WHERE token=?',hash(token));cookie('',0);return send(200,{ok:true})}

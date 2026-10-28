@@ -1,13 +1,13 @@
 # Marketing operating system: implementation audit and backlog
 
-Reviewed 28 October 2026 against the Competitive Feature Expansion brief. This is a progressive roadmap. Existing working modules remain in place; the first release extends the canonical task records rather than adding a parallel planner.
+Updated 28 October 2026 after the focused Phase 1 brief. See PHASE-ONE.md for the delivered work and review steps. This is a progressive roadmap. Existing working modules remain in place; the first release extends the canonical task records rather than adding a parallel planner.
 
 ## Existing foundation
 
 | Area | Implementation and limits |
 | --- | --- |
 | Organisations and brands | Memberships, roles, business grants, personal/company separation, company switching and All My Work. One subdivision level; deeper hierarchies remain future work. |
-| Personal planning | Lists/groups, My Day, My Week, importance, planned dates independent of deadlines, reminders, accountable owner and contributors, attachments and checklists. Checklists are not separately assignable subtasks. |
+| Personal planning | Lists/groups, My Day, My Week, importance, planned dates independent of deadlines, reminders, accountable owner and contributors, attachments and checklists. Assignable subtasks now complement the existing checklists. |
 | Connected scheduling | Marketing Overview list, board, channel timeline, campaign/project Gantt and calendar reuse task dates/status. Drag/resize updates tasks; no automatic cascading dates. |
 | Recurrence | Calendar and completion-based schedules, weekdays, selected weekly days, nth weekday, finite series, pause/skip/stop and immutable completion history. No speculative future records are generated. |
 | Marketing structure | Discipline/channel associations, campaigns/projects, strategy maps, objectives, budgets, files and account registers exist. These are a foundation, not a complete execution or measurement platform. Projects currently use campaign records. |
@@ -17,31 +17,33 @@ Reviewed 28 October 2026 against the Competitive Feature Expansion brief. This i
 ## Implemented in this increment
 
 - Explicit effort estimates, publication dates and milestone flags in the existing shared task drawer.
-- Finish-to-start prerequisites with backend cycle/access validation, blocked completion, dependent-task deletion/move protection and date-conflict warnings. Non-recurring prerequisites only. Dates never cascade automatically.
+- Finish-to-start prerequisites with backend cycle/access validation, blocked completion, dependent-task deletion/move protection and date-conflict warnings. Non-recurring prerequisites only. Gantt includes connected dependency flow. Optional forward cascades require a stored preview, version/permission rechecks and explicit deadline confirmation; committed task deadlines are locked.
 - Shared drawer change history records actor, timestamp and changed field names. Existing snapshots remain available through record versions. No task content is copied into activity logs.
 - Structured colleague mentions on comments with existing in-platform notification preferences. Backend requires current task access; mentioning someone never shares the task. No external messages are sent.
-- Private saved filters in The List, scoped to the user and workspace. Views remain live queries and cannot grant access. Shared team views are not yet implemented.
+- Personal and manager-published shared filters in The List, scoped to the user/workspace and authorised brands. Work/deadline ranges and exact statuses are supported. Views remain live queries and cannot grant access.
 - Version-checked bulk planned-date, priority and archive/restore edits, preview, atomic application and 15-minute undo. Undo refuses to overwrite subsequent edits or revoked access. Historical recurring occurrences are excluded.
 - Task duplication as a fresh one-off task, with checklist reset and comments/recurrence/reminders cleared. Existing workspace moves remain available.
-- My Work → Workload: weekly estimated hours, configurable working days/hours and days off, missing estimates and unscheduled work. Task edits use the existing drawer. Managers can inspect authorised company work and company capacity; personal and other-company workloads are never exposed in team totals.
+- My Work → Workload: weekly/monthly estimated hours and organisation/brand/campaign/discipline breakdowns, configurable working days/hours, days off, capacity pools and optional actual hours, missing estimates and unscheduled work. Task edits use the existing drawer. Managers can inspect authorised company work and company capacity; personal and other-company workloads are never exposed in team totals.
 - Archived tasks leave operational dashboard/overview counts and can be restored from The List → Archived. Archives retain dependency links and completion history.
 
 Capacity counts effort once for the accountable owner, not once per contributor. It allocates estimates to a planned work date, otherwise across working days in the recorded start/end span. Days off reduce available hours without moving scheduled tasks. Future recurrence forecasts, skills-based allocation and full cross-company availability for other people are outside this release. 37.5 hours is an explicitly labelled, unconfigured default.
 
-## Prioritised next increments
+## Phase 1 completion and later increments
 
 | Priority | Deliverable | Why / acceptance boundary |
 | --- | --- | --- |
-| P1 | Guided CSV/Excel import | Map columns, validate dates/owners/brands, preview errors and duplicates, then atomic import through the existing permission checks. Keep original files and existing records intact. |
-| P1 | Subtasks, followers, custom fields, task templates | Assignable child tasks and reusable templates need lifecycle rules beyond checklist items; preserve the simple personal planner. |
-| P1 | Shared views and wider bulk actions | Explicit team view permissions; preview and version-safe undo for assignment/list/date changes. Distinguish work date, deadline and publication date. |
-| P1 | Dependency scheduling expansion | Visible Gantt connectors, lag/lead, milestones with scheduling semantics and recurring-occurrence bindings. An impact preview and explicit confirmation must precede any cascading dates. |
+| Complete | Guided CSV/Excel task import | CSV/XLSX upload, manual mapping, owner/campaign resolution, brand assignment, date validation, duplicate warnings, confirmation, atomic create-only import and row results. No overwrites. |
+| Complete | Subtasks, followers, custom fields, task templates | Canonical assignable child tasks with inherited privacy and completion checks; authorised followers; typed fields; private/shared reusable templates. Advanced controls stay in details. |
+| Complete / extension | Shared views and bulk actions | Shared views and date filters are delivered. Current bulk work-date/priority/archive edits have preview and undo. Additional assignment/list/status bulk operations remain an optional extension. |
+| Complete / extension | Dependency scheduling | Gantt connectors, milestone indicators, locked deadlines and confirmed forward rescheduling are delivered. Lag/lead and recurring-occurrence bindings remain future enhancements. |
 | P2 | Request intake → triage → task conversion | First complete cross-module workflow: internal request forms, ownership, statuses, deduplicated conversion, activity and notifications. No cosmetic request-only dashboard. |
 | P2 | Rules engine and playbooks | Workspace-scoped triggers, conditions, actions, dry run, audit, loop prevention and permission rechecks. Reuse tasks/requests; do not run arbitrary code. |
 | P2 | Content planning and approvals | Asset versions, approval ownership, review comments, explicit approved/published states and a shared marketing calendar. Completion is not proof of publication. |
 | P2 | Campaign health and portfolio | Derive operational risks from approved definitions; distinguish scheduling health from real campaign outcomes. Add campaign-level recurring reviews. |
 | P3 | Measurement, budgets and marketing reviews | Ingest verified results with provenance, date ranges and brand/channel ownership. Separate planned/committed/actual spend, objectives, attribution and review decisions. |
 | P3 | Documented integrations, proofing and AI | Provider-specific authentication and capabilities, token security, failure/retry states and explicit user control. No simulated integrations or unsupported automatic publishing. |
+
+Phase 2 has not been started. Request intake, rules, playbooks, content approvals and subsequent roadmap phases remain for review.
 
 ## Verification and local review
 
