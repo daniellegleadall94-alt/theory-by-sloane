@@ -64,7 +64,8 @@ export function createRequestLayer(db,workspace){
   const id=randomUUID();run('INSERT INTO marketing_requests(id,organisation_id,requester_id,portal_id,data,created_at) VALUES(?,?,?,?,?,?)',id,org,user?.id||null,portal?.id||null,JSON.stringify(d),now());const row=one('SELECT * FROM marketing_requests WHERE id=?',id);event(row,user||{name:portal.name},'Request submitted');notify(row,'new','New request: '+title);return row;
  };
  const revision=(row,body)=>{if(body.version!==row.version)fail(409,'This request changed. Refresh before saving.');};
- const update=(row,d,respond=false)=>{run('UPDATE marketing_requests SET data=?,version=version+1,first_response_at=CASE WHEN ? THEN COALESCE(first_response_at,?) ELSE first_response_at END,completed_at=? WHERE id=?',JSON.stringify(d),Number(respond),now(),d.status==='Completed'?row.completed_at||now():d.status==='Archived'?row.completed_at:null,row.id);return one('SELECT * FROM marketing_requests WHERE id=?',row.id);};
+ let workflowSink=()=>{};
+ const update=(row,d,respond=false)=>{run('UPDATE marketing_requests SET data=?,version=version+1,first_response_at=CASE WHEN ? THEN COALESCE(first_response_at,?) ELSE first_response_at END,completed_at=? WHERE id=?',JSON.stringify(d),Number(respond),now(),d.status==='Completed'?row.completed_at||now():d.status==='Archived'?row.completed_at:null,row.id);const saved=one('SELECT * FROM marketing_requests WHERE id=?',row.id);workflowSink(row,saved);return saved;};
  const reply=(row,actor,body,manage)=>{
   revision(row,body);if(body.internal!==undefined&&typeof body.internal!=='boolean')fail(400,'Choose a valid message visibility.');const d=parse(row);if(['Archived','Declined','Completed'].includes(d.status))fail(409,'This request is closed.');if(body.internal&&!manage)fail(403,'Only Marketing managers can write internal notes.');const comment=text(body.text,'comment',5000,true);if(body.internal&&body.attachments?.length)fail(400,'Internal notes cannot add shared supporting documents.');if(one('SELECT count(*) AS count FROM marketing_request_comments WHERE request_id=?',row.id).count>=500)fail(400,'This request has reached its conversation limit.');
   run('INSERT INTO marketing_request_comments VALUES(?,?,?,?,?,?,?)',randomUUID(),row.id,actor.id||null,actor.name,comment,Number(!!body.internal),now());
@@ -148,5 +149,5 @@ export function createRequestLayer(db,workspace){
   fail(404,'Request Centre endpoint not found.');
  }
  const timer=setInterval(()=>{try{sync()}catch{/* Preserve pending work for the next worker pass. */}},30000);timer.unref();
- return {handle,close:()=>clearInterval(timer)};
+ return {handle,ensureForms:seed,notifyUpdate:notify,canRead:access,setWorkflowSink:listener=>{workflowSink=listener},close:()=>clearInterval(timer)};
 }

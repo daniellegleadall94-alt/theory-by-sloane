@@ -1,3 +1,4 @@
+import {createWorkflowLayer} from './workflow-api.mjs';
 import {createRequestLayer} from './request-api.mjs';
 import {createTaskImportLayer} from './task-import-api.mjs';
 import {createWorkManagementLayer} from './work-management-api.mjs';
@@ -34,7 +35,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
  db.exec('CREATE TABLE IF NOT EXISTS note_preferences(note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id),pinned INTEGER NOT NULL DEFAULT 0,archived INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(note_id,user_id))');
  const workspaceLayer=createWorkspaceLayer(db);const workManagement=createWorkManagementLayer(db,workspaceLayer);const taskImports=createTaskImportLayer(db,workspaceLayer);const aiLayer=createAiLayer(db,{databasePath,fetchImpl:aiFetch});const socialAuth=createSocialAuth(db,socialOptions);
  const validLogo=value=>{if(value==='')return true;if(typeof value!=='string'||value.length>48000||!/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(value))return false;const bytes=Buffer.from(value.split(',')[1],'base64');return bytes.length>=20&&bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'};
- const settingsLayer=createSettingsLayer(db,{workspaceLayer,validLogo});const vaultLayer=createVaultLayer(db,workspaceLayer,{audit:settingsLayer.audit});const requestLayer=createRequestLayer(db,workspaceLayer);const attempts=new Map();
+ const settingsLayer=createSettingsLayer(db,{workspaceLayer,validLogo});const vaultLayer=createVaultLayer(db,workspaceLayer,{audit:settingsLayer.audit});const requestLayer=createRequestLayer(db,workspaceLayer);const workflowLayer=createWorkflowLayer(db,workspaceLayer,requestLayer);const attempts=new Map();
  const profile=user=>({avatar:JSON.parse(one('SELECT profile FROM user_settings WHERE user_id=?',user.id)?.profile||'{}').avatar||'',id:user.id,name:user.name,email:user.email,role:user.role,personalNickname:user.personal_nickname||'',personalLogo:one('SELECT personal_logo FROM users WHERE id=?',user.id)?.personal_logo||'',company:user.company_id?{id:user.company_id,name:one('SELECT name FROM companies WHERE id=?',user.company_id).name,logo:one('SELECT logo FROM companies WHERE id=?',user.company_id).logo,nickname:one('SELECT nickname FROM memberships WHERE user_id=? AND company_id=?',user.id,user.company_id)?.nickname||''}:null,companies:all('SELECT companies.id,companies.name,companies.logo,memberships.role,memberships.nickname FROM memberships JOIN companies ON companies.id=memberships.company_id WHERE user_id=? ORDER BY companies.name',user.id)});
  function noteResult(row,user){return {...JSON.parse(row.data),organisationId:row.company_id,organisationName:one('SELECT name FROM companies WHERE id=?',row.company_id).name,...{pinned:!!one('SELECT pinned FROM note_preferences WHERE note_id=? AND user_id=?',row.id,user.id)?.pinned,archived:!!one('SELECT archived FROM note_preferences WHERE note_id=? AND user_id=?',row.id,user.id)?.archived},id:row.id,ownerId:row.owner_id,ownerName:one('SELECT name FROM users WHERE id=?',row.owner_id).name,version:row.version,sharedWith:all('SELECT user_id FROM note_shares WHERE note_id=?',row.id).map(x=>x.user_id),canEdit:row.owner_id===user.id}}
  function owned(id,user){const row=one('SELECT * FROM notes WHERE id=? AND company_id=? AND owner_id=?',id,user.company_id,user.id);if(!row||!workspaceLayer.canUnits(user.id,user.company_id,JSON.parse(row.data).unitIds||[]))fail(404,'Note not found or you do not own it.');return row}
@@ -73,6 +74,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
     return send(201,{user:session(one('SELECT * FROM users WHERE id=?',id))});
    }
    if(await requestLayer.handle({req,path,user,send,bodyOf})!==false)return;
+   if(await workflowLayer.handle({req,path,user,send,bodyOf})!==false)return;
    if(!user)fail(401,'Sign in to your company account first.');
    if(await settingsLayer.handle({req,path,user,token,bodyOf,send})!==false)return;
    if(await aiLayer.handle({req,path,user,bodyOf,send})!==false)return;
@@ -111,6 +113,6 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
   }catch(error){if(!res.writableEnded)send(error.status||500,{error:error.status?error.message:'The server could not complete this request.'})}
  }
  workspaceLayer.startReminders();
- return {middleware,runReminders:workspaceLayer.runReminders,close:()=>{requestLayer.close();workspaceLayer.close();db.close()}};
+ return {middleware,runReminders:workspaceLayer.runReminders,runWorkflows:workflowLayer.tick,close:()=>{workflowLayer.close();requestLayer.close();workspaceLayer.close();db.close()}};
 }
 
