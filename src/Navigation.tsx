@@ -4,7 +4,7 @@ import {useWorkspace} from './WorkspaceContext';
 import {useCompany} from './Company';
 import {PortfolioHierarchy} from './PortfolioBrands';
 import type {Task} from './work';
-import {GraduationCap,LockKeyhole,LayoutDashboard,CalendarDays,Bell,Inbox,Layers,Target,FolderKanban,Wallet,Globe,Wrench,ChartNoAxesCombined,BookOpen,Settings,ChevronDown,ChevronLeft,ChevronRight,PanelLeftOpen,PanelLeftClose,X,StickyNote,BriefcaseBusiness,ListTodo} from 'lucide-react';
+import {GraduationCap,LockKeyhole,LayoutGrid,LayoutDashboard,CalendarDays,Bell,Inbox,Layers,Target,FolderKanban,Wallet,Globe,Wrench,ChartNoAxesCombined,BookOpen,Settings,ChevronDown,ChevronLeft,ChevronRight,PanelLeftOpen,PanelLeftClose,X,StickyNote,BriefcaseBusiness,ListTodo} from 'lucide-react';
 import {disciplineGroups} from './disciplines';
 import './navigation.css';
 import {WorkspaceSwitcher} from './WorkspaceSwitcher';
@@ -12,7 +12,7 @@ import {WorkNavigation, type WorkNavigationProps} from './WorkNavigation';
 
 const groups=[
  {name:'PERSONAL MANAGEMENT',items:[{id:'My Dashboard',label:'My Dashboard',icon:LayoutDashboard},{id:'My Work',label:'My Work',icon:BriefcaseBusiness},{id:'My Passwords',label:'My Passwords',icon:LockKeyhole}]},
- {name:'MANAGEMENT',items:[{id:'Marketing Overview',label:'Marketing Overview',icon:Target},{id:'Strategy & Objectives',label:'Strategy & Objectives',icon:Target},{id:'Campaigns & Projects',label:'Campaigns & Projects',icon:FolderKanban},{id:'Budget & Resources',label:'Budget & Resources',icon:Wallet},{id:'Marketing Calendar',label:'Marketing Calendar',icon:CalendarDays},{id:'Marketing Request Centre',label:'Request Centre',icon:Inbox},{id:'Automations & Playbooks',label:'Automations & Playbooks',icon:Wrench}]},
+ {name:'MANAGEMENT',items:[{id:'Marketing Overview',label:'Marketing Overview',icon:LayoutGrid},{id:'Strategy & Objectives',label:'Strategy & Objectives',icon:Target},{id:'Campaigns & Projects',label:'Campaigns & Projects',icon:FolderKanban},{id:'Budget & Resources',label:'Budget & Resources',icon:Wallet},{id:'Marketing Calendar',label:'Marketing Calendar',icon:CalendarDays},{id:'Marketing Request Centre',label:'Request Centre',icon:Inbox},{id:'Automations & Playbooks',label:'Automations & Playbooks',icon:Wrench}]},
  {name:'THE WORK',items:[{id:'Marketing Disciplines',label:'Marketing Disciplines',icon:Globe},{id:'Marketing Tools',label:'Marketing Tools',icon:Wrench}]},
  {name:'KNOWLEDGE & PERFORMANCE',items:[{id:'Reporting & Analytics',label:'Reporting & Analytics',icon:ChartNoAxesCombined},{id:'Files & Knowledge',label:'Files & Knowledge',icon:BookOpen}]}
 ];
