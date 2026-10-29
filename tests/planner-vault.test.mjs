@@ -40,6 +40,15 @@ test('planner actions are atomic, private lists do not leak, metadata vaults iso
   assert.equal((await request(owner.cookie,'personal/data/account','POST',account)).status,201);
   assert.equal((await request(member.cookie,'personal/data/account/'+account.id)).status,404);
   assert.ok(!(await request(member.cookie,'vault/accounts')).body.records.some(r=>r.id===account.id));
+  let privateAccount=(await request(owner.cookie,'personal/data/account/'+account.id)).body.record;
+  assert.equal((await request(owner.cookie,'personal/data/account/'+account.id,'PUT',{...privateAccount,associatedOrganisationId:outside.body.user.company.id})).status,403);
+  assert.equal((await request(owner.cookie,'personal/data/account/'+account.id,'PUT',{...privateAccount,associatedOrganisationId:org})).status,200);
+  privateAccount=(await request(owner.cookie,'vault/accounts')).body.records.find(r=>r.id===account.id);
+  assert.equal(privateAccount.associatedOrganisationId,org);assert.equal(privateAccount.organisationId,null);
+  assert.equal((await request(member.cookie,'personal/data/account/'+account.id)).status,404);
+  assert.ok(!(await request(member.cookie,'vault/accounts')).body.records.some(r=>r.id===account.id));
+  assert.ok(!(await request(owner.cookie,base+'/records')).body.records.some(r=>r.id===account.id));
+  assert.equal((await request(owner.cookie,'personal/data/account/'+account.id,'PUT',{...privateAccount,associatedOrganisationId:{invalid:true}})).status,400);
   const shared={...account,id:'company-account',title:'Brand website',unitIds:[brand.id],accessMode:'restricted',discoverable:true,nextReview:'2026-11-01'};
   assert.equal((await request(owner.cookie,base+'/data/account','POST',shared)).status,201);
   assert.equal((await request(member.cookie,base+'/data/account/'+shared.id)).status,404);
@@ -83,10 +92,14 @@ test('planner actions are atomic, private lists do not leak, metadata vaults iso
   assert.equal((await request(owner.cookie,`appearance/brands/${org}`,'PUT',{colours:{[org]:'#2F3B2F',[brand.id]:'#B5562E'}})).status,200);
   const reminder=await request(owner.cookie,'personal/data/task','POST',{id:'reminder',title:'Due reminder',due:'2026-10-28',done:false,reminderAt:'2020-01-01T09:00:00Z',reminderTimeZone:'Europe/London'});assert.equal(reminder.status,201);api.runReminders();assert.equal((await request(owner.cookie,'planner/notifications')).body.notifications.filter(n=>n.task.id==='reminder').length,1);
   await new Promise(r=>server.close(r));api.close();api=createCompanyApi({databasePath});server=createServer(api.middleware);origin=await listen();api.runReminders();assert.equal((await request(owner.cookie,'planner/notifications')).body.notifications.filter(n=>n.task.id==='reminder').length,1);
-  assert.equal((await request(owner.cookie,'personal/data/account/'+account.id)).status,200);
+  assert.equal((await request(owner.cookie,'personal/data/account/'+account.id)).body.record.associatedOrganisationId,org);
   // Removal revokes company records and leaves the person's independent private records intact.
-  const personalMember=await request(member.cookie,'personal/data/account','POST',{...account,id:'member-private',accountOwnerId:memberId});assert.equal(personalMember.status,201);
+  const personalMember=await request(member.cookie,'personal/data/account','POST',{...account,id:'member-private',accountOwnerId:memberId,associatedOrganisationId:org});assert.equal(personalMember.status,201);
   const db=new DatabaseSync(databasePath);db.prepare('DELETE FROM memberships WHERE user_id=? AND company_id=?').run(memberId,org);db.close();
   assert.equal((await request(member.cookie,base+'/data/account/'+shared.id)).status,403);assert.equal((await request(member.cookie,'personal/data/account/member-private')).status,200);assert.equal((await request(owner.cookie,base+'/data/account/'+shared.id)).status,200);
+  const retained=(await request(member.cookie,'personal/data/account/member-private')).body.record;
+  assert.equal((await request(member.cookie,'personal/data/account/member-private','PUT',{...retained,title:'Still private after leaving'})).status,200);
+  const edited=(await request(member.cookie,'personal/data/account/member-private')).body.record;
+  assert.equal((await request(member.cookie,'personal/data/account/member-private','PUT',{...edited,associatedOrganisationId:null})).status,200);
  }finally{await new Promise(r=>server.close(r));api.close();assert.ok(resolve(folder).startsWith(resolve(tmpdir())+'\\theory-planner-vault-'));rmSync(folder,{recursive:true,force:true})}
 });
