@@ -2,6 +2,7 @@ import {completionCycle,parentCycle,blockers} from '../src/workManagement.ts';
 import {validateAccount} from './account-register.mjs';
 import {completeTask,nextOccurrence,validTaskDate} from '../src/work.ts';
 import {randomUUID} from 'node:crypto';
+import {validateCalendarEvent,splitCalendarSeries} from '../src/calendarModel.ts';
 
 // Existing companies and memberships retain their IDs; they are the organisation boundary.
 export function createWorkspaceLayer(db){
@@ -61,6 +62,11 @@ export function createWorkspaceLayer(db){
  const result=row=>({...JSON.parse(row.data),id:row.external_id,organisationId:row.organisation_id,unitIds:unitsOf(row),ownerId:row.owner_id,assigneeIds:all('SELECT user_id FROM record_assignments WHERE record_key=?',row.record_key).map(x=>x.user_id),version:row.version,updatedAt:row.updated_at});
  const permittedRows=(userId,org,kind)=>all('SELECT * FROM workspace_records WHERE scope=?'+(kind?' AND kind=?':''),scopeOf(userId,org),...(kind?[kind]:[])).filter(r=>canRead(userId,r));
  const validateData=(data,kind,org,userId,existing,options={})=>{
+  if(kind==='event'&&data?.calendarEvent){
+   try{validateCalendarEvent(data);if(data.exceptions){if(typeof data.exceptions!=='object'||Array.isArray(data.exceptions)||Object.keys(data.exceptions).length>1000)throw Error('Too many event exceptions.');for(const [date,change] of Object.entries(data.exceptions)){if(!validTaskDate(date)||!change||typeof change!=='object'||Array.isArray(change))throw Error('Check event exceptions.');if(Object.keys(change).some(k=>!['title','start','end','allDay','timeZone','location','notes','attendees','attendeeIds','channel','colour','cancelled'].includes(k)))throw Error('Check event exception fields.');if(!change.cancelled)validateCalendarEvent({...data,...change,exceptions:undefined,recurrence:undefined})}}}catch(error){fail(400,error.message)}
+   if(data.attendeeIds&&(!Array.isArray(data.attendeeIds)||data.attendeeIds.length>200||data.attendeeIds.some(id=>typeof id!=='string'||(org?!member(id,org):id!==userId))))fail(400,'Choose team members from this organisation.');
+   if(org&&data.visibility==='private')fail(400,'Company calendar events are visible to authorised company members.');
+  }
   if(kind==='account'&&data)validateAccount(data,{fail,org,userId,member,existing});
   if(!data||typeof data!=='object'||Array.isArray(data))fail(400,'Enter a valid record.');const title=data.title??data.name;if(typeof title!=='string'||!title.trim()||title.length>180)fail(400,'Enter a title or name up to 180 characters.');
   if(['task','campaign'].includes(kind)){const date=kind==='task'?data.due:data.end;if(typeof date!=='string'||!(kind==='task'&&date==='')&&!validTaskDate(date))fail(400,'Choose a valid date.');if(data.start&&!validTaskDate(data.start))fail(400,'Choose a valid start date.');if(data.start&&date&&data.start>date)fail(400,'Start date must be on or before the end date.')}
@@ -180,6 +186,11 @@ export function createWorkspaceLayer(db){
      for(const row of family)run('DELETE FROM workspace_records WHERE record_key=?',row.record_key);
     });return send(200,{ok:true});
    }
+   if(action==='actions'&&kind==='event'&&req.method==='POST'){
+    const body=await bodyOf(req);if(!existing||body.version!==existing.version)fail(409,'This event changed. Reopen it before continuing.');if(body.action!=='split')fail(400,'Choose a supported event action.');
+    let split;try{split=splitCalendarSeries(result(existing),body.event,body.occurrence)}catch(error){fail(400,error.message)}
+    const record=transaction(()=>{if(split.before)save(user.id,org,'event',id,split.before,existing);const saved=save(user.id,org,'event',split.before?randomUUID():id,{...split.after,calendarEvent:true},split.before?null:existing);return saved});return send(200,{record:result(record)});
+   }
    if(action==='actions'&&req.method==='POST'){
     if(kind!=='task'||!existing)fail(400,'Choose a task.');const body=await bodyOf(req);if(body.version!==existing.version)fail(409,'This task changed elsewhere. Refresh before continuing.');const task=result(existing);if(body.action==='complete'&&!task.done&&task.dependencyIds?.length&&blockers(task,all("SELECT * FROM workspace_records WHERE scope=? AND kind='task'",existing.scope).map(result)).length)fail(409,'Complete the prerequisite tasks before completing this task.');if(task.occurrenceOf&&body.action!=='delete-series')fail(400,'Completed recurring history cannot be changed.');
     if(!['complete','skip','pause','resume','stop','delete-series','comment','duplicate'].includes(body.action))fail(400,'Choose a supported task action.');
@@ -193,6 +204,11 @@ export function createWorkspaceLayer(db){
      if(body.action==='comment'){if(typeof body.text!=='string'||!body.text.trim()||body.text.length>5000)fail(400,'Enter a comment up to 5,000 characters.');next=[{...task,comments:[...(task.comments||[]),{id:randomUUID(),text:body.text.trim(),userId:user.id,name:user.name,at,mentionIds:body.mentionIds||[]}]}]}
      return next.map(t=>result(save(user.id,org,'task',t.id,t.done?{...t,completedBy:user.id,completedByName:user.name}:t,t.id===id?existing:null)));
     });return send(200,{records});
+   }
+   if(action==='move'&&kind==='event'&&req.method==='POST'){
+    const body=await bodyOf(req);if(!existing||body.version!==existing.version)fail(409,'This event changed. Reopen it before moving it.');const target=body.targetOrganisationId||null;if(target===org)fail(400,'Choose a different organisation.');if(target){assertWritable(target);if(!['owner','admin','manager','member'].includes(orgAccess(user.id,target).role))fail(403,'Your role cannot create events in the destination.');}
+    if(one('SELECT record_key FROM workspace_records WHERE scope=? AND kind=? AND external_id=?',scopeOf(user.id,target),'event',id))fail(409,'This event already exists in the destination.');
+    const moved=transaction(()=>{const saved=save(user.id,target,'event',id,{...body.event,calendarEvent:true,visibility:target?'shared':'private',sharedWith:[],assigneeIds:[user.id]},null);run('DELETE FROM workspace_records WHERE record_key=?',existing.record_key);return saved});return send(200,{record:result(moved)});
    }
    if(action==='move'&&req.method==='POST'){
     if(kind!=='task'||!existing)fail(400,'Choose a task to move.');if(JSON.parse(existing.data).occurrenceOf)fail(400,'Completed recurring history cannot be moved independently.');const body=await bodyOf(req);if(body.version!==existing.version)fail(409,'This task changed elsewhere. Refresh before moving it.');assertUnreferenced(existing.scope,id);if(JSON.parse(existing.data).parentTaskId)fail(409,'Detach this subtask from its parent before moving workspaces.');if(body.task?.dependencyIds?.length)fail(409,'Remove prerequisites before moving this task to another workspace.');const sourceComments=JSON.parse(existing.data).comments||[],incomingComments=body.task?.comments||[];if(sourceComments.some((c,i)=>JSON.stringify(c)!==JSON.stringify(incomingComments[i])))fail(400,'Existing comments must be preserved when moving workspaces.');if(body.task)body.task.comments=incomingComments.map((c,i)=>i<sourceComments.length?c:{...c,userId:user.id,name:user.name,at:new Date().toISOString()});if(body.task?.occurrenceOf)fail(400,'Completion history is created through task completion.');const target=body.targetOrganisationId||null;if(target===org)fail(400,'Choose a different workspace.');if(target)orgAccess(user.id,target);if(target)assertWritable(target);if(target&&!['owner','admin','manager','member'].includes(orgAccess(user.id,target).role))fail(403,'Your role cannot create work in the destination.');
