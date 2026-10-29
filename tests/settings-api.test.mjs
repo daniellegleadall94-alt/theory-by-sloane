@@ -6,6 +6,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {createCompanyApi} from '../server/company-api.mjs';
+import {defaultMenu,moveMenu} from '../src/navigationModel.ts';
 
 test('settings persist, isolate accounts and organisations, protect security operations, and retain expired-trial data',async()=>{
  const directory=mkdtempSync(join(tmpdir(),'theory-settings-')),databasePath=join(directory,'test.sqlite');const api=createCompanyApi({databasePath}),server=createServer(api.middleware);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin=`http://127.0.0.1:${server.address().port}`;
@@ -22,6 +23,18 @@ test('settings persist, isolate accounts and organisations, protect security ope
   const pins=JSON.stringify(['My Calendar','Budget & Resources','Budget & Resources']);
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationFavourites:pins})).status,200);
   assert.deepEqual(JSON.parse((await request(owner.cookie,'settings/account')).body.preferences.navigationFavourites),['My Calendar','Budget & Resources']);
+  const menu=moveMenu(defaultMenu(),'Budget & Resources','My Dashboard').map(item=>({...item,visible:item.id==='Budget & Resources'}));
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationLayout:JSON.stringify(menu)})).status,200);
+  assert.deepEqual(JSON.parse((await request(owner.cookie,'settings/account')).body.preferences.navigationLayout),menu);
+  assert.equal((await request(outsider.cookie,'settings/account')).body.preferences.navigationLayout,undefined);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationLayout:'invalid'})).status,400);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationLayout:JSON.stringify([...menu.slice(1),menu[1]])})).status,400);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationLayout:JSON.stringify([{id:'Settings',visible:false},...menu.slice(1)])})).status,400);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{density:'comfortable'})).status,200);
+  assert.deepEqual(JSON.parse((await request(owner.cookie,'settings/account')).body.preferences.navigationLayout),menu);
+  const hiddenMenu=menu.map(item=>({...item,visible:false}));
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationLayout:JSON.stringify(hiddenMenu)})).status,200);
+  assert.deepEqual(JSON.parse((await request(owner.cookie,'settings/account')).body.preferences.navigationLayout),hiddenMenu);
   assert.equal((await request(outsider.cookie,'settings/account')).body.preferences.navigationFavourites,undefined);
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationFavourites:'["unknown"]'})).status,400);
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationFavourites:'invalid'})).status,400);
