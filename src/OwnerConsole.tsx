@@ -45,23 +45,14 @@ export function OwnerConsole(){
 <main className="owner-main">
 <header>
 <span>THEORY / BUSINESS OPERATIONS</span>
-<a href="/">Customer application <ArrowUpRight size={14}/>
-</a>
+<div className="owner-header-actions">{session?.staff&&<button disabled={busy} onClick={()=>void load()}><RotateCcw size={15}/>Refresh</button>}<a href="/">Customer application <ArrowUpRight size={14}/></a></div>
 </header>{!session?<p role="status">Opening secure console…</p>:!session.staff?<section className="owner-login">
 <ShieldCheck size={36}/>
 <p className="owner-kicker">A SEPARATE SPACE FOR YOUR BUSINESS</p>
 <h1>Theory Owner Console</h1>
 <p>Run the platform with a clear view of your people, organisations and operations.</p>
 {session.passwordLogin?<><p className="owner-muted">Sign in with your existing Theory account. Access is restricted to the explicitly approved owner.</p><form className="owner-password-form" onSubmit={e=>{e.preventDefault();void passwordSignIn(e.currentTarget)}}><label>Email<input autoFocus name="email" type="email" autoComplete="username" maxLength={254} required/></label><label>Password<input name="password" type="password" autoComplete="current-password" maxLength={256} required/></label><button className="primary" disabled={busy}>{busy?'Signing in…':'Sign in to Owner Console'}</button></form>{session.staffIdentityLogin&&<button disabled={busy} onClick={signIn}>Sign in with staff identity</button>}</>:<><div className="owner-notice">Staff access requires an approved internal identity and verified multi-factor authentication. Customer and company administrator accounts do not grant access.</div><button className="primary" disabled={!session.configured||busy} onClick={signIn}>{session.configured?'Sign in with staff identity':'Owner sign-in not configured'}</button>{!session.configured&&<p className="owner-muted">Owner access must be explicitly enabled for an existing Theory account by the server operator.</p>}{new URLSearchParams(location.search).get('auth')&&!['success'].includes(new URLSearchParams(location.search).get('auth')!)&&<p role="alert">Sign-in did not complete. An approved identity and a fresh MFA challenge are required.</p>}</>}</section>:<>
-<div className="owner-heading">
-<div>
-<p className="owner-kicker">YOUR PLATFORM, CLEARLY</p>
-<h1>{destinations.find(d=>d.id===page)?.name}</h1>
-<p className="owner-muted">Business metadata and operational signals. Customer content stays in customer workspaces.</p>
-</div>
-<button disabled={busy} onClick={()=>void load()}>
-<RotateCcw size={15}/>Refresh</button>
-</div>{page==='overview'&&<>
+<h1 className="owner-accessible-title">{destinations.find(d=>d.id===page)?.name}</h1>{page==='overview'&&<>
 <div className="owner-toolbar">
 <label>Reporting period<select value={range} onChange={e=>setRange(e.target.value)}>{[['today','Today'],['yesterday','Yesterday'],['7','Last 7 days'],['30','Last 30 days'],['month','This month'],['previous-month','Previous month'],['quarter','This quarter'],['custom','Custom range']].map(([v,l])=>
 <option key={v} value={v}>{l}</option>)}</select>
