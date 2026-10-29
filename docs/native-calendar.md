@@ -20,7 +20,9 @@ Events store local start and end values plus an IANA time zone, or inclusive sta
 
 ## Optional external sync
 
-Outlook/Google OAuth, subscriptions, external meeting ingestion and two-way sync are not implemented by the native calendar change. There are no simulated account connections or external meetings. The calendar functions independently and does not require provider credentials. The separately proposed sync layer still needs implementation, provider app registrations, consent and a reachable HTTPS callback service. Connected-account calendars should only be added to this sidebar once backed by a real connection.
+Outlook and Google calendar accounts can now be connected from the calendar's **Connect calendars** button or **Settings → Calendar connections**. They appear under their account names in the calendar sidebar and use the same view and colour controls. Imported meetings remain private and view-only; their details link to the original provider for edits. See [Calendar connections](calendar-connections.md) for setup and permission details.
+
+Two-way publishing, organiser meeting editing, provider webhooks and task/event mapping are still a separate integration phase. The native calendar works independently when providers are not configured.
 
 ## Verification
 

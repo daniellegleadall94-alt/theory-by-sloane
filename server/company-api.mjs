@@ -1,5 +1,6 @@
 import {createOwnerLayer} from './owner-api.mjs';
 import {createCalendarLayer} from './calendar-api.mjs';
+import {createCalendarConnections} from './calendar-connections.mjs';
 import {verifyTheoryPassword} from './theory-password.mjs';
 import {createWorkflowLayer} from './workflow-api.mjs';
 import {createRequestLayer} from './request-api.mjs';
@@ -19,7 +20,7 @@ const scrypt=promisify(derive);
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const email=value=>String(value||'').trim().toLowerCase();
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
-export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,socialOptions,ownerOptions}={}){
+export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,socialOptions,ownerOptions,calendarOptions}={}){
  if(databasePath!==':memory:')mkdirSync(dirname(databasePath),{recursive:true});
  const db=new DatabaseSync(databasePath);db.exec(`PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
  CREATE TABLE IF NOT EXISTS companies(id TEXT PRIMARY KEY,name TEXT NOT NULL);
@@ -36,7 +37,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
  if(!all('PRAGMA table_info(users)').some(c=>c.name==='personal_logo'))db.exec("ALTER TABLE users ADD COLUMN personal_logo TEXT NOT NULL DEFAULT ''");
  if(!all('PRAGMA table_info(companies)').some(c=>c.name==='logo'))db.exec("ALTER TABLE companies ADD COLUMN logo TEXT NOT NULL DEFAULT ''");
  db.exec('CREATE TABLE IF NOT EXISTS note_preferences(note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id),pinned INTEGER NOT NULL DEFAULT 0,archived INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(note_id,user_id))');
- const workspaceLayer=createWorkspaceLayer(db);const calendarLayer=createCalendarLayer(db);const workManagement=createWorkManagementLayer(db,workspaceLayer);const taskImports=createTaskImportLayer(db,workspaceLayer);const aiLayer=createAiLayer(db,{databasePath,fetchImpl:aiFetch});const socialAuth=createSocialAuth(db,socialOptions);
+ const workspaceLayer=createWorkspaceLayer(db);const calendarLayer=createCalendarLayer(db);const calendarConnections=createCalendarConnections(db,{databasePath,env:socialOptions?.env||process.env,...calendarOptions});const workManagement=createWorkManagementLayer(db,workspaceLayer);const taskImports=createTaskImportLayer(db,workspaceLayer);const aiLayer=createAiLayer(db,{databasePath,fetchImpl:aiFetch});const socialAuth=createSocialAuth(db,socialOptions);
  const validLogo=value=>{if(value==='')return true;if(typeof value!=='string'||value.length>48000||!/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(value))return false;const bytes=Buffer.from(value.split(',')[1],'base64');return bytes.length>=20&&bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'};
  const settingsLayer=createSettingsLayer(db,{workspaceLayer,validLogo});const vaultLayer=createVaultLayer(db,workspaceLayer,{audit:settingsLayer.audit});const requestLayer=createRequestLayer(db,workspaceLayer);const workflowLayer=createWorkflowLayer(db,workspaceLayer,requestLayer);const ownerLayer=createOwnerLayer(db,ownerOptions);const attempts=new Map();
  const profile=user=>({avatar:JSON.parse(one('SELECT profile FROM user_settings WHERE user_id=?',user.id)?.profile||'{}').avatar||'',id:user.id,name:user.name,email:user.email,role:user.role,personalNickname:user.personal_nickname||'',personalLogo:one('SELECT personal_logo FROM users WHERE id=?',user.id)?.personal_logo||'',company:user.company_id?{id:user.company_id,name:one('SELECT name FROM companies WHERE id=?',user.company_id).name,logo:one('SELECT logo FROM companies WHERE id=?',user.company_id).logo,nickname:one('SELECT nickname FROM memberships WHERE user_id=? AND company_id=?',user.id,user.company_id)?.nickname||''}:null,companies:all('SELECT companies.id,companies.name,companies.logo,memberships.role,memberships.nickname FROM memberships JOIN companies ON companies.id=memberships.company_id WHERE user_id=? AND companies.archived=0 ORDER BY companies.sort_order,companies.name',user.id)});
@@ -64,6 +65,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
    const cookie=(value,maxAge)=>{const previous=res.getHeader('Set-Cookie');res.setHeader('Set-Cookie',[...(Array.isArray(previous)?previous:previous?[previous]:[]),`theory_session=${value}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${req.socket.encrypted?'; Secure':''}`])};
    const session=(account)=>{if(one('SELECT suspended FROM user_restrictions WHERE user_id=?',account.id)?.suspended)fail(403,'This account is suspended. Contact Theory support.');const value=randomBytes(32).toString('hex');run('DELETE FROM sessions WHERE expires<?',Date.now());run('INSERT INTO sessions(token,user_id,expires,active_company_id,created_at) VALUES(?,?,?,?,?)',hash(value),account.id,Date.now()+7*86400000,account.company_id,Date.now());cookie(value,604800);return profile(account)};
    if(await socialAuth.handle({req,res,path,user,token,bodyOf,send,session})!==false)return;
+   if(await calendarConnections.handle({req,res,path,user,token,bodyOf,send})!==false)return;
    if(path==='/api/session'&&req.method==='GET')return send(200,{user:user?profile(user):null});
    if(['/api/auth/register','/api/auth/login'].includes(path)&&req.method==='POST'){
     const key=req.socket.remoteAddress||'local';const rate=attempts.get(key)||{count:0,until:Date.now()+900000};if(rate.until<Date.now()){rate.count=0;rate.until=Date.now()+900000}if(++rate.count>30)fail(429,'Too many attempts. Try again in 15 minutes.');attempts.set(key,rate);
