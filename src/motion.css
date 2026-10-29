@@ -1,0 +1,23 @@
+:root{--motion-fast:180ms;--motion-page:240ms;--motion-layout:320ms;--motion-ease:cubic-bezier(.22,1,.36,1)}
+
+/* One page fade replaces separate, staggered section entrances. */
+.app main>section,.app main>.metrics,.app main>.dashboard-grid,.owner-main>section{animation:none}
+.app .primary-navigation{transition:width var(--motion-layout) var(--motion-ease),padding var(--motion-layout) var(--motion-ease),transform var(--motion-layout) var(--motion-ease)}
+.app .main-shell{transition:margin-left var(--motion-layout) var(--motion-ease)}
+.app .secondary-navigation{animation:theory-navigation-enter var(--motion-layout) var(--motion-ease)}
+.app :is(.primary-link,.secondary-link,.work-list-link,.icon,.secondary),.owner-nav button{transition:background-color var(--motion-fast) ease,color var(--motion-fast) ease,border-color var(--motion-fast) ease,box-shadow var(--motion-fast) ease}
+.app :is(.primary-link,.secondary-link) svg{transition:color var(--motion-fast) ease}
+.app :is(.campaign-card,.my-work-destination,.palette-card,.sticky-note){transition:transform var(--motion-page) var(--motion-ease),box-shadow var(--motion-page) ease,border-color var(--motion-fast) ease}
+.app .header-search-panel{transition-duration:var(--motion-page);transition-timing-function:var(--motion-ease)}
+.native-period{animation:theory-surface-enter var(--motion-page) ease}
+.native-event-backdrop,.modal-backdrop,.owner-detail-backdrop{animation:theory-surface-enter var(--motion-fast) ease}
+.native-event-drawer,.ai-support-panel{animation:theory-drawer-enter var(--motion-layout) var(--motion-ease)}
+.modal-backdrop>.modal{animation:theory-dialog-enter var(--motion-page) var(--motion-ease)}
+@keyframes theory-surface-enter{from{opacity:.65}to{opacity:1}}
+@keyframes theory-navigation-enter{from{opacity:.5;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+@keyframes theory-drawer-enter{from{opacity:.7;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+@keyframes theory-dialog-enter{from{opacity:.7;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:800px){.app .secondary-navigation{animation:none;transition:transform var(--motion-layout) var(--motion-ease)}}
+html[data-motion=reduced] *,html[data-motion=reduced] *::before,html[data-motion=reduced] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+html[data-motion=reduced] .app :is(.campaign-card,.my-work-destination,.palette-card,.sticky-note):hover{transform:none}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.app :is(.campaign-card,.my-work-destination,.palette-card,.sticky-note):hover{transform:none}}

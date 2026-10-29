@@ -1,6 +1,7 @@
 import {useEffect,useState,useRef} from 'react';
 import {ShieldCheck,ArrowUpRight,LayoutDashboard,Users,Building2,Wallet,Activity,ScrollText,LogOut,ArrowUp,ArrowDown,EyeOff,RotateCcw} from 'lucide-react';
 import './owner.css';
+import {usePageMotion} from './usePageMotion';
 type Staff={method?:'password'|'oidc';name:string;roles:string[];permissions:string[]};
 type Metric={id:string;label:string;value:number|null;note:string;previous?:number;destination?:string};
 type Row=Record<string,string|number|boolean|null>;
@@ -10,7 +11,7 @@ async function api(path:string,body?:unknown,method=body?'POST':'GET'){
 const destinations=[{id:'overview',name:'Executive overview',icon:LayoutDashboard},{id:'users',name:'People',icon:Users},{id:'organisations',name:'Organisations',icon:Building2},{id:'billing',name:'Subscriptions',icon:Wallet},{id:'technical',name:'System health',icon:Activity},{id:'audit',name:'Audit history',icon:ScrollText}];
 export function OwnerConsole(){
  const [session,setSession]=useState<{configured:boolean;passwordLogin?:boolean;staffIdentityLogin?:boolean;staff:Staff|null}|null>(null),[page,setPage]=useState('overview'),[error,setError]=useState(''),[busy,setBusy]=useState(false),[data,setData]=useState<any>(null),[query,setQuery]=useState(''),[status,setStatus]=useState('all'),[offset,setOffset]=useState(0),[range,setRange]=useState('30'),[from,setFrom]=useState(''),[to,setTo]=useState(''),[layout,setLayout]=useState<{id:string;hidden:boolean}[]>([]),[detail,setDetail]=useState<any>(null),[orgDetail,setOrgDetail]=useState<any>(null),[confirmation,setConfirmation]=useState(''),[action,setAction]=useState(''),[saved,setSaved]=useState('');
- const requestGeneration=useRef(0);
+ const pageMotion=usePageMotion(page);const requestGeneration=useRef(0);
  const dates=new URLSearchParams({range,...(range==='custom'?{from,to}:{})}).toString();
  useEffect(()=>{document.title='Theory — Owner Console';api('session').then(value=>{setSession(value);if(value.staff)setPage(destinations.find(d=>value.staff.permissions.includes(d.id))?.id||'overview')}).catch(e=>setError(e.message))},[]);
  const load=async()=>{if(!session?.staff||range==='custom'&&(!from||!to))return;const generation=++requestGeneration.current;setBusy(true);setError('');try{const next=await api(page+'?'+dates+'&'+new URLSearchParams({q:query,status,offset:String(offset)}));if(generation!==requestGeneration.current)return;setData(next);if(page==='overview'){const savedLayout=await api('layout');if(generation===requestGeneration.current)setLayout(savedLayout.layout)}}catch(e){if(generation===requestGeneration.current){setError((e as Error).message);setData(null)}}finally{if(generation===requestGeneration.current)setBusy(false)}};
@@ -42,7 +43,7 @@ export function OwnerConsole(){
 <LogOut size={15}/>Sign out</button>
 </div>
 </>}</aside>
-<main className="owner-main">
+<main ref={pageMotion} className="owner-main">
 <header>
 <span>THEORY / BUSINESS OPERATIONS</span>
 <div className="owner-header-actions">{session?.staff&&<button disabled={busy} onClick={()=>void load()}><RotateCcw size={15}/>Refresh</button>}<a href="/">Customer application <ArrowUpRight size={14}/></a></div>
