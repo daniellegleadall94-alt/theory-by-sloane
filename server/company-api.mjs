@@ -1,4 +1,5 @@
 import {createOwnerLayer} from './owner-api.mjs';
+import {verifyTheoryPassword} from './theory-password.mjs';
 import {createWorkflowLayer} from './workflow-api.mjs';
 import {createRequestLayer} from './request-api.mjs';
 import {createTaskImportLayer} from './task-import-api.mjs';
@@ -66,7 +67,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
    if(['/api/auth/register','/api/auth/login'].includes(path)&&req.method==='POST'){
     const key=req.socket.remoteAddress||'local';const rate=attempts.get(key)||{count:0,until:Date.now()+900000};if(rate.until<Date.now()){rate.count=0;rate.until=Date.now()+900000}if(++rate.count>30)fail(429,'Too many attempts. Try again in 15 minutes.');attempts.set(key,rate);
     const body=await bodyOf(req);const address=email(body.email);if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)||address.length>254||typeof body.password!=='string'||body.password.length<12||body.password.length>256)fail(400,'Use a valid email and a password of 12–256 characters.');
-    if(path.endsWith('/login')){const account=one('SELECT * FROM users WHERE email=?',address);const [salt,saved]=account?.password.includes(':')?account.password.split(':'):['invalid','0'.repeat(128)];const actual=await scrypt(body.password,salt,64);if(!account||!account.password.includes(':')||!timingSafeEqual(Buffer.from(saved,'hex'),actual))fail(401,'Email or password is incorrect.');return send(200,{user:session(account)})}
+    if(path.endsWith('/login')){const account=one('SELECT * FROM users WHERE email=?',address);if(!await verifyTheoryPassword(body.password,account?.password))fail(401,'Email or password is incorrect.');return send(200,{user:session(account)})}
     if(one('SELECT id FROM users WHERE email=?',address))fail(409,'An account with this email already exists. Sign in instead.');
     const name=String(body.name||'').trim();if(!name||name.length>100)fail(400,'Enter your name.');
     const invitation=body.invite?one('SELECT * FROM invitations WHERE token=? AND email=? AND expires>?',hash(String(body.invite).trim()),address,Date.now()):null;

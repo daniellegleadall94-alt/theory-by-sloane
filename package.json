@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node tests/work.test.ts && node tests/advanced-work.test.ts && node tests/overview.test.ts && node tests/portfolio.test.ts && node tests/work-management.test.ts && node --test tests/company-api.test.mjs tests/workspace-api.test.mjs tests/notes-api.test.mjs tests/ai-api.test.mjs tests/social-auth.test.mjs tests/settings-api.test.mjs tests/planner-vault.test.mjs tests/work-management-api.test.mjs tests/phase-one-api.test.mjs tests/request-api.test.mjs tests/workflow-api.test.mjs tests/owner-api.test.mjs tests/organisation-tree.test.mjs"
+    "test": "node tests/work.test.ts && node tests/advanced-work.test.ts && node tests/overview.test.ts && node tests/portfolio.test.ts && node tests/work-management.test.ts && node --test tests/company-api.test.mjs tests/workspace-api.test.mjs tests/notes-api.test.mjs tests/ai-api.test.mjs tests/social-auth.test.mjs tests/settings-api.test.mjs tests/planner-vault.test.mjs tests/work-management-api.test.mjs tests/phase-one-api.test.mjs tests/request-api.test.mjs tests/workflow-api.test.mjs tests/owner-api.test.mjs tests/owner-password.test.mjs tests/organisation-tree.test.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

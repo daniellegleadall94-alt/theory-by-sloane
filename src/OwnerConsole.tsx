@@ -1,7 +1,7 @@
 import {useEffect,useState,useRef} from 'react';
 import {ShieldCheck,ArrowUpRight,LayoutDashboard,Users,Building2,Wallet,Activity,ScrollText,LogOut,ArrowUp,ArrowDown,EyeOff,RotateCcw} from 'lucide-react';
 import './owner.css';
-type Staff={name:string;roles:string[];permissions:string[]};
+type Staff={method?:'password'|'oidc';name:string;roles:string[];permissions:string[]};
 type Metric={id:string;label:string;value:number|null;note:string;previous?:number;destination?:string};
 type Row=Record<string,string|number|boolean|null>;
 async function api(path:string,body?:unknown,method=body?'POST':'GET'){
@@ -9,13 +9,14 @@ async function api(path:string,body?:unknown,method=body?'POST':'GET'){
 }
 const destinations=[{id:'overview',name:'Executive overview',icon:LayoutDashboard},{id:'users',name:'People',icon:Users},{id:'organisations',name:'Organisations',icon:Building2},{id:'billing',name:'Subscriptions',icon:Wallet},{id:'technical',name:'System health',icon:Activity},{id:'audit',name:'Audit history',icon:ScrollText}];
 export function OwnerConsole(){
- const [session,setSession]=useState<{configured:boolean;staff:Staff|null}|null>(null),[page,setPage]=useState('overview'),[error,setError]=useState(''),[busy,setBusy]=useState(false),[data,setData]=useState<any>(null),[query,setQuery]=useState(''),[status,setStatus]=useState('all'),[offset,setOffset]=useState(0),[range,setRange]=useState('30'),[from,setFrom]=useState(''),[to,setTo]=useState(''),[layout,setLayout]=useState<{id:string;hidden:boolean}[]>([]),[detail,setDetail]=useState<any>(null),[orgDetail,setOrgDetail]=useState<any>(null),[confirmation,setConfirmation]=useState(''),[action,setAction]=useState(''),[saved,setSaved]=useState('');
+ const [session,setSession]=useState<{configured:boolean;passwordLogin?:boolean;staffIdentityLogin?:boolean;staff:Staff|null}|null>(null),[page,setPage]=useState('overview'),[error,setError]=useState(''),[busy,setBusy]=useState(false),[data,setData]=useState<any>(null),[query,setQuery]=useState(''),[status,setStatus]=useState('all'),[offset,setOffset]=useState(0),[range,setRange]=useState('30'),[from,setFrom]=useState(''),[to,setTo]=useState(''),[layout,setLayout]=useState<{id:string;hidden:boolean}[]>([]),[detail,setDetail]=useState<any>(null),[orgDetail,setOrgDetail]=useState<any>(null),[confirmation,setConfirmation]=useState(''),[action,setAction]=useState(''),[saved,setSaved]=useState('');
  const requestGeneration=useRef(0);
  const dates=new URLSearchParams({range,...(range==='custom'?{from,to}:{})}).toString();
  useEffect(()=>{document.title='Theory — Owner Console';api('session').then(value=>{setSession(value);if(value.staff)setPage(destinations.find(d=>value.staff.permissions.includes(d.id))?.id||'overview')}).catch(e=>setError(e.message))},[]);
  const load=async()=>{if(!session?.staff||range==='custom'&&(!from||!to))return;const generation=++requestGeneration.current;setBusy(true);setError('');try{const next=await api(page+'?'+dates+'&'+new URLSearchParams({q:query,status,offset:String(offset)}));if(generation!==requestGeneration.current)return;setData(next);if(page==='overview'){const savedLayout=await api('layout');if(generation===requestGeneration.current)setLayout(savedLayout.layout)}}catch(e){if(generation===requestGeneration.current){setError((e as Error).message);setData(null)}}finally{if(generation===requestGeneration.current)setBusy(false)}};
  useEffect(()=>{setData(null);const timer=setTimeout(()=>{void load()},200);return()=>clearTimeout(timer)},[session,page,query,status,offset,range,from,to]);
- const signIn=async()=>{setBusy(true);setError('');try{const result=await api('auth/start',{});window.location.assign(result.url)}catch(e){setError((e as Error).message);setBusy(false)}};
+ const signIn=async()=>{if(session?.staff?.method==='password'){try{await api('logout',{});setSession({...session,staff:null});setData(null)}catch(e){setError((e as Error).message)}return}setBusy(true);setError('');try{const result=await api('auth/start',{});window.location.assign(result.url)}catch(e){setError((e as Error).message);setBusy(false)}};
+ const passwordSignIn=async(form:HTMLFormElement)=>{const values=new FormData(form);setBusy(true);setError('');try{const result=await api('auth/login',{email:values.get('email'),password:values.get('password')});setSession(result);setPage(destinations.find(d=>result.staff.permissions.includes(d.id))?.id||'overview')}catch(e){setError((e as Error).message)}finally{const password=form.elements.namedItem('password') as HTMLInputElement|null;if(password)password.value='';setBusy(false)}};
  const choose=(id:string)=>{requestGeneration.current++;setData(null);setPage(id);setQuery('');setOffset(0);setDetail(null);setOrgDetail(null);setSaved('')};
  const permitted=(permission:string)=>session?.staff?.permissions.includes(permission);
  const inspect=async(id:string)=>{setError('');try{setDetail(await api('users/'+id));setConfirmation('');setAction('')}catch(e){setError((e as Error).message)}};
@@ -51,8 +52,7 @@ export function OwnerConsole(){
 <p className="owner-kicker">A SEPARATE SPACE FOR YOUR BUSINESS</p>
 <h1>Theory Owner Console</h1>
 <p>Run the platform with a clear view of your people, organisations and operations.</p>
-<div className="owner-notice">Staff access requires an approved internal identity and verified multi-factor authentication. Customer and company administrator accounts do not grant access.</div>
-<button className="primary" disabled={!session.configured||busy} onClick={signIn}>{session.configured?'Sign in with staff identity':'Staff identity provider not connected'}</button>{!session.configured&&<p className="owner-muted">Connect the internal identity provider and configure staff roles on the server to enable sign-in.</p>}{new URLSearchParams(location.search).get('auth')&&!['success'].includes(new URLSearchParams(location.search).get('auth')!)&&<p role="alert">Sign-in did not complete. An approved identity and a fresh MFA challenge are required.</p>}</section>:<>
+{session.passwordLogin?<><p className="owner-muted">Sign in with your existing Theory account. Access is restricted to the explicitly approved owner.</p><form className="owner-password-form" onSubmit={e=>{e.preventDefault();void passwordSignIn(e.currentTarget)}}><label>Email<input autoFocus name="email" type="email" autoComplete="username" maxLength={254} required/></label><label>Password<input name="password" type="password" autoComplete="current-password" maxLength={256} required/></label><button className="primary" disabled={busy}>{busy?'Signing in…':'Sign in to Owner Console'}</button></form>{session.staffIdentityLogin&&<button disabled={busy} onClick={signIn}>Sign in with staff identity</button>}</>:<><div className="owner-notice">Staff access requires an approved internal identity and verified multi-factor authentication. Customer and company administrator accounts do not grant access.</div><button className="primary" disabled={!session.configured||busy} onClick={signIn}>{session.configured?'Sign in with staff identity':'Owner sign-in not configured'}</button>{!session.configured&&<p className="owner-muted">Owner access must be explicitly enabled for an existing Theory account by the server operator.</p>}{new URLSearchParams(location.search).get('auth')&&!['success'].includes(new URLSearchParams(location.search).get('auth')!)&&<p role="alert">Sign-in did not complete. An approved identity and a fresh MFA challenge are required.</p>}</>}</section>:<>
 <div className="owner-heading">
 <div>
 <p className="owner-kicker">YOUR PLATFORM, CLEARLY</p>
@@ -139,11 +139,11 @@ export function OwnerConsole(){
 <option value="revoke-sessions">Revoke customer sessions</option>
 </select>
 </label>{action&&<>
-<p>This changes access to this person’s Theory account. It does not delete their work. A staff MFA sign-in within the last five minutes is required.</p>
+<p>This changes access to this person’s Theory account. It does not delete their work. A fresh owner sign-in within the last five minutes is required.</p>
 <label>Type {detail.user.email} to confirm<input value={confirmation} onChange={e=>setConfirmation(e.target.value)}/>
 </label>
 <button disabled={busy||confirmation!==detail.user.email} onClick={change}>Confirm action</button>
-<button onClick={signIn}>Reauthenticate with MFA</button>
+<button onClick={signIn}>Sign in again</button>
 </>}</div>}</section>
 </div>}</div>;
 }

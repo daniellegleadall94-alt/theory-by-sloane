@@ -1,5 +1,6 @@
 import * as oidc from 'openid-client';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
+import {verifyTheoryPassword} from './theory-password.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const fail=(status,message)=>{throw Object.assign(Error(message),{status})};
 export const platformRoles={
@@ -21,14 +22,25 @@ export function createOwnerLayer(db,{env=process.env,client=oidc}={}){
  CREATE TABLE IF NOT EXISTS owner_layout(subject TEXT PRIMARY KEY,data TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS user_restrictions(user_id TEXT PRIMARY KEY REFERENCES users(id),suspended INTEGER NOT NULL DEFAULT 0);`);
  if(!all('PRAGMA table_info(owner_sessions)').some(c=>c.name==='authority'))db.exec("ALTER TABLE owner_sessions ADD COLUMN authority TEXT NOT NULL DEFAULT ''");
+ if(!all('PRAGMA table_info(owner_sessions)').some(c=>c.name==='method'))db.exec("ALTER TABLE owner_sessions ADD COLUMN method TEXT NOT NULL DEFAULT 'oidc'");
+ db.exec(`CREATE TABLE IF NOT EXISTS owner_local_access(user_id TEXT PRIMARY KEY REFERENCES users(id),enabled INTEGER NOT NULL DEFAULT 1,granted_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS owner_login_attempts(bucket TEXT PRIMARY KEY,count INTEGER NOT NULL,expires INTEGER NOT NULL);`);
+ const localEnabled=()=>!!one('SELECT user_id FROM owner_local_access WHERE enabled=1');
+ const localPerson=id=>one('SELECT u.id,u.name,u.password FROM users u JOIN owner_local_access a ON a.user_id=u.id LEFT JOIN user_restrictions r ON r.user_id=u.id WHERE u.id=? AND a.enabled=1 AND coalesce(r.suspended,0)=0',id);
+ const localAuthority=person=>hash('theory-owner-password-v1:'+person.password);
+ let pendingPasswords=0;
  let origin=null,issuer=null,staff=[];try{const url=new URL(env.THEORY_OWNER_URL);if(url.pathname==='/'&&!url.search&&!url.hash&&!url.username&&!url.password&&(url.protocol==='https:'||url.protocol==='http:'&&['127.0.0.1','localhost'].includes(url.hostname)))origin=url.origin;const iss=new URL(env.THEORY_OWNER_ISSUER);if(iss.protocol==='https:'&&!iss.username&&!iss.password&&!iss.search&&!iss.hash)issuer=iss.href;const entries=JSON.parse(env.THEORY_OWNER_STAFF||'[]');if(Array.isArray(entries)&&entries.length<=100&&entries.every(s=>s&&typeof s.subject==='string'&&s.subject.length>0&&s.subject.length<=256&&typeof s.name==='string'&&s.name.length<=100&&Array.isArray(s.roles)&&s.roles.length>0&&s.roles.every(r=>Object.hasOwn(platformRoles,r))&&(!s.permissions||Array.isArray(s.permissions)&&s.permissions.every(p=>Object.values(platformRoles).flat().includes(p))))&&new Set(entries.map(s=>s.subject)).size===entries.length)staff=entries}catch{}
  const authority=hash(JSON.stringify([origin,issuer,env.THEORY_OWNER_CLIENT_ID]));
  const enabled=()=>!!(origin&&issuer&&env.THEORY_OWNER_CLIENT_ID&&env.THEORY_OWNER_CLIENT_SECRET&&staff.length);
  let configuration;const config=async()=>{if(!configuration){configuration=await client.discovery(new URL(issuer),env.THEORY_OWNER_CLIENT_ID,env.THEORY_OWNER_CLIENT_SECRET,undefined,{timeout:15});client.enableNonRepudiationChecks(configuration)}return configuration};
  const audit=(actor,action,target=null)=>run('INSERT INTO owner_audit VALUES(?,?,?,?,?)',randomUUID(),actor,action,target,new Date().toISOString());
- const cookie=(req,res,name,value,age,sameSite='Strict')=>{const previous=res.getHeader('Set-Cookie');res.setHeader('Set-Cookie',[...(Array.isArray(previous)?previous:previous?[previous]:[]),`${name}=${value}; Path=/api/owner; HttpOnly; SameSite=${sameSite}; Max-Age=${age}${origin?.startsWith('https:')?'; Secure':''}`])};
+ const cookie=(req,res,name,value,age,sameSite='Strict')=>{const previous=res.getHeader('Set-Cookie');res.setHeader('Set-Cookie',[...(Array.isArray(previous)?previous:previous?[previous]:[]),`${name}=${value}; Path=/api/owner; HttpOnly; SameSite=${sameSite}; Max-Age=${age}${req.socket.encrypted||origin?.startsWith('https:')?'; Secure':''}`])};
  const readCookie=(req,name)=>String(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith(name+'='))?.slice(name.length+1);
- const auth=req=>{if(!enabled())return null;const token=readCookie(req,'theory_owner');if(!token)return null;const session=one('SELECT * FROM owner_sessions WHERE token=? AND expires>? AND last_seen>? AND authority=?',hash(token),Date.now(),Date.now()-900000,authority),person=session&&staff.find(s=>s.subject===session.subject);if(!person)return null;run('UPDATE owner_sessions SET last_seen=? WHERE token=?',Date.now(),hash(token));const rolePermissions=[...new Set(person.roles.flatMap(r=>platformRoles[r]))];return {...person,permissions:person.permissions?rolePermissions.filter(p=>person.permissions.includes(p)):rolePermissions,session}};
+ const auth=req=>{const token=readCookie(req,'theory_owner');if(!token)return null;const session=one('SELECT * FROM owner_sessions WHERE token=? AND expires>? AND last_seen>?',hash(token),Date.now(),Date.now()-900000);if(!session)return null;let person;
+  if(session.method==='password'){const account=session.subject.startsWith('theory:')&&localPerson(session.subject.slice(7));if(!account||session.authority!==localAuthority(account))return null;person={subject:session.subject,userId:account.id,name:account.name,roles:['Platform Owner']};}
+  else{if(!enabled()||session.authority!==authority)return null;person=staff.find(s=>s.subject===session.subject)}
+  if(!person)return null;run('UPDATE owner_sessions SET last_seen=? WHERE token=?',Date.now(),hash(token));const rolePermissions=[...new Set(person.roles.flatMap(r=>platformRoles[r]))];return {...person,permissions:person.permissions?rolePermissions.filter(p=>person.permissions.includes(p)):rolePermissions,session}};
+ const sessionResult=actor=>({configured:enabled()||localEnabled(),...(localEnabled()?{passwordLogin:true}:{}),...(enabled()?{staffIdentityLogin:true}:{}),staff:actor?{name:actor.name,roles:actor.roles,permissions:actor.permissions,method:actor.session.method}:null});
  const allowed=(actor,permission)=>{if(!actor.permissions.includes(permission))fail(403,'Your internal role does not permit this action.')};
  const count=(sql,...a)=>one(sql,...a).n;
  const orgWhere='EXISTS(SELECT 1 FROM memberships WHERE company_id=c.id)';
@@ -44,7 +56,26 @@ export function createOwnerLayer(db,{env=process.env,client=oidc}={}){
  return {async handle({req,res,path,send,bodyOf}){
   if(!path.startsWith('/api/owner/'))return false;
   res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cache-Control','no-store');
-  if(path==='/api/owner/session'&&req.method==='GET'){const actor=auth(req);return send(200,{configured:enabled(),staff:actor?{name:actor.name,roles:actor.roles,permissions:actor.permissions}:null})}
+  if(path==='/api/owner/session'&&req.method==='GET')return send(200,sessionResult(auth(req)));
+  if(path==='/api/owner/auth/login'&&req.method==='POST'){
+   const hostname=new URL('http://'+req.headers.host).hostname;
+   if(!req.socket.encrypted&&!(['localhost','127.0.0.1','[::1]'].includes(hostname)&&['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)))fail(403,'Owner sign-in requires HTTPS outside local development.');
+   const body=await bodyOf(req),email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
+   if(!email||email.length>254||typeof body.password!=='string'||body.password.length<1||body.password.length>256)fail(400,'Enter your Theory email and password.');
+   run('DELETE FROM owner_login_attempts WHERE expires<?',Date.now());
+   const buckets=[{key:hash('ip:'+req.socket.remoteAddress),limit:20},{key:hash('account:'+email),limit:5}];
+   if(pendingPasswords>=4||buckets.some(b=>(one('SELECT count FROM owner_login_attempts WHERE bucket=?',b.key)?.count||0)>=b.limit)||count('SELECT count(*) n FROM owner_login_attempts')>10000)fail(429,'Too many sign-in attempts. Try again in 15 minutes.');
+   for(const b of buckets)run('INSERT INTO owner_login_attempts VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1',b.key,Date.now()+900000);
+   const account=one('SELECT u.id,u.name,u.password FROM users u JOIN owner_local_access a ON a.user_id=u.id LEFT JOIN user_restrictions r ON r.user_id=u.id WHERE u.email=? AND a.enabled=1 AND coalesce(r.suspended,0)=0',email);
+   let verified=false;pendingPasswords++;try{verified=await verifyTheoryPassword(body.password,account?.password)}finally{pendingPasswords--}
+   if(!verified||!account){audit('unverified','password-sign-in-denied');fail(401,'Email or password is incorrect, or owner access is not enabled.');}
+   // Permissions and the password are checked again after asynchronous password verification.
+   const current=localPerson(account.id);if(!current||current.password!==account.password)fail(401,'Please sign in again.');
+   const previous=readCookie(req,'theory_owner');if(previous)run('DELETE FROM owner_sessions WHERE token=?',hash(previous));
+   run('DELETE FROM owner_sessions WHERE expires<? OR last_seen<?',Date.now(),Date.now()-900000);
+   const token=randomBytes(32).toString('hex'),subject='theory:'+account.id;run('INSERT INTO owner_sessions(token,subject,authenticated_at,expires,last_seen,authority,method) VALUES(?,?,?,?,?,?,?)',hash(token),subject,Date.now(),Date.now()+3600000,Date.now(),localAuthority(current),'password');
+   run('DELETE FROM owner_login_attempts WHERE bucket=?',buckets[1].key);cookie(req,res,'theory_owner',token,3600);audit(subject,'password-sign-in');return send(200,sessionResult(auth({...req,headers:{...req.headers,cookie:'theory_owner='+token}})));
+  }
   if(path==='/api/owner/auth/start'&&req.method==='POST'){
    if(!enabled())fail(503,'Internal identity provider and staff access need configuration.');
    run('DELETE FROM owner_flows WHERE expires<?',Date.now());if(count('SELECT count(*) n FROM owner_flows')>=100)fail(429,'Please try again shortly.');
@@ -61,7 +92,7 @@ export function createOwnerLayer(db,{env=process.env,client=oidc}={}){
     const token=randomBytes(32).toString('hex');run('DELETE FROM owner_sessions WHERE expires<? OR last_seen<?',Date.now(),Date.now()-900000);run('INSERT INTO owner_sessions(token,subject,authenticated_at,expires,last_seen,authority) VALUES(?,?,?,?,?,?)',hash(token),person.subject,claims.auth_time*1000,Date.now()+3600000,Date.now(),authority);cookie(req,res,'theory_owner',token,3600);audit(person.subject,'sign-in');return redirect('success');
    }catch{audit('unverified','sign-in-failed');return redirect('failed')}
   }
-  const actor=auth(req);if(!actor)fail(401,'Internal staff sign-in with MFA is required.');
+  const actor=auth(req);if(!actor)fail(401,'Approved owner or internal staff sign-in is required.');
   if(path==='/api/owner/logout'&&req.method==='POST'){run('DELETE FROM owner_sessions WHERE token=?',hash(readCookie(req,'theory_owner')));cookie(req,res,'theory_owner','',0);audit(actor.subject,'sign-out');return send(200,{ok:true})}
   if(path==='/api/owner/layout'){
    allowed(actor,'overview');if(req.method==='GET')return send(200,{layout:JSON.parse(one('SELECT data FROM owner_layout WHERE subject=?',actor.subject)?.data||'[]')});
@@ -78,7 +109,7 @@ export function createOwnerLayer(db,{env=process.env,client=oidc}={}){
   const userMatch=path.match(/^\/api\/owner\/users\/([^/]+)(?:\/(suspend|reactivate|revoke-sessions))?$/);
   if(userMatch){allowed(actor,'users');const [,id,action]=userMatch,user=one('SELECT id,name,email,created_at,email_confirmed FROM users WHERE id=?',id);if(!user)fail(404,'Account not found.');
    if(!action&&req.method==='GET'){audit(actor.subject,'view-user-metadata',id);return send(200,{user:{...user,suspended:!!one('SELECT suspended FROM user_restrictions WHERE user_id=?',id)?.suspended},memberships:all('SELECT c.id,c.name,m.role FROM memberships m JOIN companies c ON c.id=m.company_id WHERE m.user_id=?',id),providers:all('SELECT provider FROM social_identities WHERE user_id=?',id).map(r=>r.provider),mfaStatus:'Data unavailable: managed by authentication provider',sessions:count('SELECT count(*) n FROM sessions WHERE user_id=? AND expires>?',id,Date.now()),closureRequests:all('SELECT id,kind,status,created_at FROM closure_requests WHERE user_id=?',id),lastLoginNote:'Session creation is not a complete historical login record.'})}
-   if(action&&req.method==='POST'){allowed(actor,'users.manage');if(Date.now()-actor.session.authenticated_at>300000)fail(403,'Sign in with MFA again before making this change.');const body=await bodyOf(req);if(body.confirmation!==user.email)fail(400,'Type the account email to confirm.');db.exec('BEGIN IMMEDIATE');try{if(action!=='revoke-sessions')run('INSERT INTO user_restrictions VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET suspended=excluded.suspended',id,action==='suspend'?1:0);if(action!=='reactivate')run('DELETE FROM sessions WHERE user_id=?',id);audit(actor.subject,action,id);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}return send(200,{ok:true})}
+   if(action&&req.method==='POST'){allowed(actor,'users.manage');if(action==='suspend'&&actor.userId===id)fail(400,'You cannot suspend the account used for your owner access.');if(Date.now()-actor.session.authenticated_at>300000)fail(403,'Sign in again before making this change.');const body=await bodyOf(req);if(body.confirmation!==user.email)fail(400,'Type the account email to confirm.');db.exec('BEGIN IMMEDIATE');try{if(action!=='revoke-sessions')run('INSERT INTO user_restrictions VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET suspended=excluded.suspended',id,action==='suspend'?1:0);if(action!=='reactivate')run('DELETE FROM sessions WHERE user_id=?',id);audit(actor.subject,action,id);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}return send(200,{ok:true})}
   }
   if(path==='/api/owner/organisations'&&req.method==='GET'){allowed(actor,'organisations');const q=(params.get('q')||'').toLowerCase().slice(0,200);const rows=all(`SELECT c.id,c.name,c.created_at,s.plan,s.status,s.trial_started_at,s.trial_ends_at,(SELECT count(*) FROM memberships WHERE company_id=c.id) members,(SELECT count(*) FROM business_units WHERE organisation_id=c.id AND archived=0) brands FROM companies c LEFT JOIN organisation_subscriptions s ON s.organisation_id=c.id WHERE ${orgWhere} ORDER BY c.name`).filter(r=>!q||r.name.toLowerCase().includes(q)||r.id.includes(q));return send(200,{total:rows.length,organisations:rows.slice(Math.max(0,Number(params.get('offset'))||0),Math.max(0,Number(params.get('offset'))||0)+50)})}
   const orgMatch=path.match(/^\/api\/owner\/organisations\/([^/]+)$/);
