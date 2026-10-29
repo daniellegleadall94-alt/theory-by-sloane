@@ -1,5 +1,5 @@
 import React from 'react';
-import {UserRound,ShieldCheck,Bell,Palette,Building2,Settings,ArrowRight} from 'lucide-react';
+import {UserRound,ShieldCheck,Bell,Palette,Building2,Settings,ArrowRight,LockKeyhole} from 'lucide-react';
 import {useCompany} from './Company';
 import {settingsPage} from './settingsNavigation';
 
@@ -24,6 +24,7 @@ export function AccountShortcuts({onNavigate}:{onNavigate:(page:string)=>void}){
   {open&&<nav id={panelId} className="popover account-shortcuts" aria-label="Account shortcuts">
    <div className="account-shortcuts-heading"><h3>{user?.name||'Your account'}</h3><p>{user?.email||'Sign in to manage your account'}</p><small>{workspaceName}</small></div>
    {shortcuts.map(({label,section,icon:Icon})=><button key={section} onClick={()=>navigate(settingsPage(section))}><Icon size={16}/><span>{label}</span></button>)}
+   <button onClick={()=>navigate('My Passwords')}><LockKeyhole size={16}/><span>My Passwords</span></button>
    <button className="account-shortcuts-all" onClick={()=>navigate('Workspace settings')}><Settings size={16}/><span>All settings</span><ArrowRight size={14}/></button>
   </nav>}
  </div>;

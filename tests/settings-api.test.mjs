@@ -19,7 +19,15 @@ test('settings persist, isolate accounts and organisations, protect security ope
   assert.equal((await request(owner.cookie,'settings/profile','PUT',{displayName:'Test',timeZone:'Invalid/Zone'})).status,400);
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{appearance:'dark',density:'compact',landingPage:'Marketing Overview',plannerView:'Board'})).status,200);assert.equal((await request(owner.cookie,'settings/account')).body.preferences.appearance,'dark');assert.deepEqual((await request(outsider.cookie,'settings/account')).body.preferences,{});
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{appearance:'invalid'})).status,400);
+  const pins=JSON.stringify(['My Calendar','Budget & Resources','Budget & Resources']);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationFavourites:pins})).status,200);
+  assert.deepEqual(JSON.parse((await request(owner.cookie,'settings/account')).body.preferences.navigationFavourites),['My Calendar','Budget & Resources']);
+  assert.equal((await request(outsider.cookie,'settings/account')).body.preferences.navigationFavourites,undefined);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationFavourites:'["unknown"]'})).status,400);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationFavourites:'invalid'})).status,400);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationFavourites:'{}'})).status,400);
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{appearance:'dark',density:'compact',landingPage:'Marketing HQ',plannerView:'Board'})).status,200);assert.equal((await request(owner.cookie,'settings/account')).body.preferences.landingPage,'Marketing Overview');
+  assert.deepEqual(JSON.parse((await request(owner.cookie,'settings/account')).body.preferences.navigationFavourites),['My Calendar','Budget & Resources']);
   assert.equal((await request(owner.cookie,base+'/details','PUT',{tradingName:'A trading name',currency:'GBP',timeZone:'Europe/London'})).status,200);assert.equal((await request(owner.cookie,base+'/details')).body.settings.currency,'GBP');assert.equal((await request(outsider.cookie,base+'/details')).status,403);
   assert.equal((await request(owner.cookie,'settings/notifications','PUT',{types:['Overdue tasks'],frequency:'daily',channel:'both',time:'08:30',timeZone:'Europe/London',organisationIds:[org],securityMessages:false})).status,200);assert.equal((await request(owner.cookie,'settings/account')).body.notifications.securityMessages,true);
   assert.equal((await request(outsider.cookie,'settings/notifications','PUT',{types:[],frequency:'daily',channel:'email',time:'08:30',timeZone:'Europe/London',organisationIds:[org]})).status,400);
