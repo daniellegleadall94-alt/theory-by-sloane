@@ -1,8 +1,8 @@
 import React from 'react';
-import {Building2,UserRound,Upload} from 'lucide-react';
+import {Building2,UserRound,Upload,LayoutGrid} from 'lucide-react';
 
-export function WorkspaceIcon({logo,company=false}:{logo?:string;company?:boolean}){
- return <span className="workspace-monogram">{logo?<img src={logo} alt=""/>:company?<Building2 size={18}/>:<UserRound size={18}/>}</span>;
+export function WorkspaceIcon({logo,company=false,everything=false}:{logo?:string;company?:boolean;everything?:boolean}){
+ return <span className="workspace-monogram">{everything?<LayoutGrid size={18}/>:logo?<img src={logo} alt=""/>:company?<Building2 size={18}/>:<UserRound size={18}/>}</span>;
 }
 
 export function WorkspaceLogoEditor({logo,onChange,company=false,disabled=false}:{logo:string;onChange:(logo:string)=>void;company?:boolean;disabled?:boolean}){
