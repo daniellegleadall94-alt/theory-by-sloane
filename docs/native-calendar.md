@@ -15,7 +15,7 @@ Events store local start and end values plus an IANA time zone, or inclusive sta
 - Day and Week provide 15-minute creation and drag/drop targets, with draggable start/end edges on event blocks. Month supports date moves. Date/time fields in the details drawer provide a keyboard alternative.
 - Month, Year and agenda use the same calendar selections. Year dots use calendar colours; month/day buttons navigate to the corresponding view. List supports 7-day, 30-day and custom ranges.
 - Events can repeat on a schedule with individual exceptions. Details support this occurrence, the whole series, or this and future occurrences. Future edits split the series atomically; earlier history remains. Future exceptions are reset when splitting a series.
-- T goes to today; arrow keys navigate periods; D/W/M/Y/L switch views outside text fields. The sidebar collapses behind Calendars on narrow screens. Reduced-motion preferences suppress transitions.
+- Today, previous/next, view buttons and date pickers control navigation. The sidebar collapses behind Calendars on narrow screens. Reduced-motion preferences suppress transitions.
 - Moving an event between organisations uses a confirmed, transactional scope change. It rechecks destination membership, company access and role; moving a personal event to a company makes its details visible to authorised company members.
 
 ## Optional external sync
