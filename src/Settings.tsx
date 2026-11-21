@@ -28,7 +28,7 @@ export function Settings({section}:{section:string}){
  const actions=<div className="settings-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>void load()}>Cancel changes</button><button className="primary" disabled={busy}>{busy?'Saving…':'Save changes'}</button></div>;
  const download=(value:unknown,name:string)=>{const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const anchor=document.createElement('a');anchor.href=url;anchor.download=name;anchor.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
  const unavailable=(title:string,description:string)=><div className="settings-information"><h3>{title}</h3><p>{description}</p><span className="settings-status">Provider setup required</span></div>;
- if(!user&&!['Primary menu','Visible marketing channels','Appearance & Preferences'].includes(section))return <AccountGate/>;
+ if(!user&&!['Primary menu','Visible marketing channels','Appearance & Preferences'].includes(section))return <AccountGate key={section}/>;
  return <section className="settings-page"><div className="settings-context"><span>{['Calendar connections','My Profile','Login & Security','Notifications','Primary menu','Visible marketing channels','Appearance & Preferences','Account Closure','Data Management','Activity & Audit Logs'].includes(section)?'Personal account · '+(user?.email||'On this device'):org?org.name:'Choose an organisation using the workspace menu'}</span><small>Settings</small></div>{loading?<div className="panel" role="status">Loading settings…</div>:<>
  {section==='Primary menu'&&<MenuSettings/>}
  {section==='Visible marketing channels'&&<ChannelVisibilitySettings/>}

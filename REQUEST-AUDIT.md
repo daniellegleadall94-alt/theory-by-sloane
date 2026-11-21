@@ -66,6 +66,8 @@ Audited 21 November 2026 against the conversation, the eight supplied developmen
 ## Execution log
 
 - 21 November: audited source and delivery notes; recorded previously undisclosed partial delivery and superseded wording. Completed items 1 and 2 sequentially.
-- Incoming palette fix complete: Appearance now works in a local/guest workspace, with device-only persistence clearly labelled; palette choices and Save verified in the browser and build passed. Next: investigate repeated browser saved-password suggestions during navigation, then Audience. Keep subsequent requests queued until the active item is checked and saved.
+- Incoming palette fix complete: Appearance now works in a local/guest workspace, with device-only persistence clearly labelled; palette choices and Save verified in the browser and build passed (d4dddb1).
+- Sign-in navigation fix: Settings closes the expanded login form when changing sections; the tab now says Existing account and the actual submit button says Sign in to Theory. Browser navigation verified. The browser may still offer saved passwords when the user deliberately focuses a login field; Theory does not control that native popup. No real user sign-in was submitted during this check.
+- Next queued implementation: Audience. Subsequent requests stay queued until the active item is checked and saved. Codex's message-queue bar is application UI, not something this repository can control.
 
 Each item is only marked complete after relevant validation. Later requests to remove controls take precedence over earlier requests to add them. This queue records the work; it does not install a timed automation or promise background execution while Codex is closed.
