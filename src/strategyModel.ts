@@ -37,20 +37,48 @@ export const personaFields=[
 export type Persona={id:string}&Record<typeof personaFields[number]['key'],string>;
 export const emptyPersona=(id:string):Persona=>({id,name:'',segment:'',role:'',painPoints:'',goals:'',triggers:'',where:'',channels:''});
 export const audienceQuestions=[{key:'personas',label:'Audience personas',helper:'Build a clear picture of each audience. Add at least one persona and complete its fields; you can keep unfinished cards as drafts.',example:'A buying decision may involve a specifier, a purchaser and an end user. Give each a separate persona when their needs differ.'}] as const;
-export type SupportedStrategyModule='foundations'|'context'|'audience';
-export type StrategyAnswer=string|string[]|Persona[];
+export const competitorFields=[
+ {key:'name',label:'Competitor name',helper:'Name an alternative your customers consider.',example:'Example supplier',short:true},
+ {key:'website',label:'Website',helper:'Their public website.',example:'https://example.com',short:true},
+ {key:'strengths',label:'Strengths',helper:'What do they do well?',example:'Strong distribution.'},
+ {key:'weaknesses',label:'Weaknesses',helper:'Where are needs unmet?',example:'Limited specialist support.'},
+ {key:'pricing',label:'Pricing position',helper:'Describe their pricing using available evidence.',example:'Premium with bundled support.'},
+ {key:'messaging',label:'Key messaging',helper:'What benefits do they emphasise?',example:'Reliable supply.'},
+ {key:'channels',label:'Channels they use',helper:'Where do they reach customers?',example:'LinkedIn and trade press.'}
+] as const;
+export type Competitor={id:string}&Record<typeof competitorFields[number]['key'],string>;
+export const emptyCompetitor=(id:string):Competitor=>({id,name:'',website:'',strengths:'',weaknesses:'',pricing:'',messaging:'',channels:''});
+export const marketQuestions=[{key:'competitors',label:'Competitors',helper:'Compare alternatives using evidence rather than assumptions.',example:'Consider direct competitors and alternative solutions.'},{key:'trends',label:'Market trends',helper:'What changes affect demand or buying behaviour?',example:'Buyers increasingly request sustainability evidence.'}] as const;
+export const swotQuestions=[
+ {key:'strengths',label:'Strengths',helper:'What internal capabilities give you an advantage?',example:'Specialist expertise and strong customer relationships.'},
+ {key:'weaknesses',label:'Weaknesses',helper:'Which internal limitations need attention?',example:'Limited capacity to produce regular content.'},
+ {key:'opportunities',label:'Opportunities',helper:'Which external changes or unmet needs could help you grow?',example:'Customers need technical guidance competitors do not provide.'},
+ {key:'threats',label:'Threats',helper:'Which external risks could affect your plans?',example:'Competitors expanding their distribution network.'}
+] as const;
+export const positioningQuestions=[
+ {key:'proposition',label:'Unique value proposition',helper:'Explain why your audience should choose you.',example:'Specialist guidance and dependable products that keep projects moving.'},
+ {key:'messages',label:'Key messages per persona',helper:'Connect each persona’s needs to a relevant benefit.',example:'For a purchaser, emphasise reliable supply; for a specifier, provide technical evidence.'},
+ {key:'proof',label:'Proof points',helper:'What evidence supports your promises?',example:'Verified case studies, product testing and customer feedback.'},
+ {key:'voice',label:'Tone of voice',helper:'Describe how your brand should sound, including what to avoid.',example:'Clear, knowledgeable and approachable. Avoid jargon and exaggerated claims.'}
+] as const;
+export type PersonaMessage={id:string;persona:string;message:string};
+export type SupportedStrategyModule='foundations'|'context'|'audience'|'market'|'swot'|'positioning';
+export type StrategyAnswer=string|string[]|Persona[]|Competitor[]|PersonaMessage[];
 export type StrategyAnswers=Record<string,StrategyAnswer>;
 export const strategyStarted=(answers:StrategyAnswers)=>Object.values(answers).some(value=>Array.isArray(value)?value.length>0:!!value.trim());
-export const supportedStrategyModule=(key:unknown):key is SupportedStrategyModule=>key==='foundations'||key==='context'||key==='audience';
-export const strategyQuestions=(key:SupportedStrategyModule)=>key==='audience'?audienceQuestions:key==='context'?contextQuestions:foundationQuestions;
-export const emptyStrategyAnswers=(key:SupportedStrategyModule):StrategyAnswers=>key==='audience'?{personas:[]}:key==='context'?{products:'',revenue:'',goals:''}:emptyFoundations();
-export const strategyFilled=(key:SupportedStrategyModule,answers:StrategyAnswers)=>key==='audience'?(validateStrategyAnswers(key,answers)&&(answers.personas as Persona[]).length>0&&(answers.personas as Persona[]).every(persona=>personaFields.every(field=>persona[field.key].trim()))?1:0):strategyQuestions(key).filter(question=>Array.isArray(answers[question.key])?(answers[question.key] as string[]).length>0:typeof answers[question.key]==='string'&&!!(answers[question.key] as string).trim()).length;
-export const strategyAnswerText=(value:StrategyAnswer|undefined):string=>typeof value==='string'?value:!value?'':value.map(item=>typeof item==='string'?item:personaFields.map(field=>field.label+': '+(item[field.key]||'Not answered')).join('\n')).join(typeof value[0]==='string'?', ':'\n\n');
+export const supportedStrategyModule=(key:unknown):key is SupportedStrategyModule=>key==='foundations'||key==='context'||key==='audience'||key==='market'||key==='swot'||key==='positioning';
+export const strategyQuestions=(key:SupportedStrategyModule)=>key==='positioning'?positioningQuestions:key==='swot'?swotQuestions:key==='market'?marketQuestions:key==='audience'?audienceQuestions:key==='context'?contextQuestions:foundationQuestions;
+export const emptyStrategyAnswers=(key:SupportedStrategyModule):StrategyAnswers=>key==='positioning'?{proposition:'',messages:[],proof:'',voice:''}:key==='swot'?{strengths:[],weaknesses:[],opportunities:[],threats:[],dismissed:[]}:key==='market'?{competitors:[],trends:''}:key==='audience'?{personas:[]}:key==='context'?{products:'',revenue:'',goals:''}:emptyFoundations();
+export const strategyFilled=(key:SupportedStrategyModule,answers:StrategyAnswers)=>key==='positioning'?(validateStrategyAnswers(key,answers)?['proposition','proof','voice'].filter(key=>(answers[key] as string).trim()).length+((answers.messages as PersonaMessage[]).length>0&&(answers.messages as PersonaMessage[]).every(item=>item.persona.trim()&&item.message.trim())?1:0):0):key==='market'?(validateStrategyAnswers(key,answers)?((answers.competitors as Competitor[]).length>0&&(answers.competitors as Competitor[]).every(item=>competitorFields.every(field=>item[field.key].trim()))?1:0)+((answers.trends as string).trim()?1:0):0):key==='audience'?(validateStrategyAnswers(key,answers)&&(answers.personas as Persona[]).length>0&&(answers.personas as Persona[]).every(persona=>personaFields.every(field=>persona[field.key].trim()))?1:0):strategyQuestions(key).filter(question=>Array.isArray(answers[question.key])?(answers[question.key] as string[]).length>0&&(answers[question.key] as string[]).every(item=>typeof item==='string'&&!!item.trim()):typeof answers[question.key]==='string'&&!!(answers[question.key] as string).trim()).length;
+export const strategyAnswerText=(value:StrategyAnswer|undefined):string=>typeof value==='string'?value:!value?'':value.map(item=>typeof item==='string'?item:'persona' in item?item.persona+': '+item.message:('segment' in item?personaFields:competitorFields).map(field=>field.label+': '+((item as unknown as Record<string,string>)[field.key]||'Not answered')).join('\n')).join(typeof value[0]==='string'?', ':'\n\n');
 export function validateStrategyAnswers(key:SupportedStrategyModule,value:unknown):value is StrategyAnswers{
  if(key==='foundations')return validateFoundations(value);
  if(!value||typeof value!=='object'||Array.isArray(value))return false;
  const answers=value as StrategyAnswers;
- if(key==='audience')return Object.keys(answers).length===1&&Array.isArray(answers.personas)&&answers.personas.length<=30&&new Set(answers.personas.map(persona=>typeof persona==='object'&&persona?.id)).size===answers.personas.length&&answers.personas.every(persona=>!!persona&&typeof persona==='object'&&!Array.isArray(persona)&&Object.keys(persona).length===personaFields.length+1&&typeof persona.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(persona.id)&&personaFields.every(field=>typeof persona[field.key]==='string'&&persona[field.key].length<=('short' in field?200:3000)));
+ if(key==='positioning')return Object.keys(answers).length===4&&['proposition','proof','voice'].every(key=>typeof answers[key]==='string'&&answers[key].length<=6000)&&Array.isArray(answers.messages)&&answers.messages.length<=30&&new Set(answers.messages.map(item=>typeof item==='object'&&item?.id)).size===answers.messages.length&&answers.messages.every(item=>!!item&&typeof item==='object'&&Object.keys(item).length===3&&'persona' in item&&'message' in item&&typeof item.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.id)&&typeof item.persona==='string'&&item.persona.length<=200&&typeof item.message==='string'&&item.message.length<=3000);
+ if(key==='swot')return Object.keys(answers).length===5&&[...swotQuestions.map(item=>item.key),'dismissed'].every(key=>Array.isArray(answers[key])&&answers[key].length<=(key==='dismissed'?120:50)&&(answers[key] as string[]).every(item=>typeof item==='string'&&item.length<=6000));
+ if(key==='market')return Object.keys(answers).length===2&&typeof answers.trends==='string'&&answers.trends.length<=6000&&Array.isArray(answers.competitors)&&answers.competitors.length<=30&&new Set(answers.competitors.map(item=>typeof item==='object'&&item?.id)).size===answers.competitors.length&&answers.competitors.every(item=>!!item&&typeof item==='object'&&!Array.isArray(item)&&Object.keys(item).length===competitorFields.length+1&&typeof item.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(item.id)&&competitorFields.every(field=>typeof (item as Competitor)[field.key]==='string'&&(item as Competitor)[field.key].length<=('short' in field?200:3000)));
+ if(key==='audience')return Object.keys(answers).length===1&&Array.isArray(answers.personas)&&answers.personas.length<=30&&new Set(answers.personas.map(persona=>typeof persona==='object'&&persona?.id)).size===answers.personas.length&&answers.personas.every(persona=>!!persona&&typeof persona==='object'&&!Array.isArray(persona)&&Object.keys(persona).length===personaFields.length+1&&typeof persona.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(persona.id)&&personaFields.every(field=>typeof (persona as Persona)[field.key]==='string'&&(persona as Persona)[field.key].length<=('short' in field?200:3000)));
  return Object.keys(answers).length===contextQuestions.length&&contextQuestions.every(({key})=>typeof answers[key]==='string'&&(answers[key] as string).length<=6000);
 }
 export const foundationFilled=(answers:Foundations)=>foundationQuestions.filter(question=>question.key==='values'?answers.values.length>0:!!answers[question.key].trim()).length;
@@ -63,4 +91,4 @@ export function nextStrategyReview(day:string,months:number){const source=new Da
 export type FoundationRecord={id:string;title:string;strategyBuilder:true;moduleKey:SupportedStrategyModule;entityId:string;answers:StrategyAnswers;reviewMonths:number;status:'Not started'|'In progress'|'Complete';version:number;updatedAt:string;completedAt?:string;reviewedAt?:string;nextReviewDate?:string;copiedFrom?:{id:string;version:number};unitIds:string[];reviewTaskId?:string;reviewEventId?:string};
 export type StrategySnapshot={version:number;reason:string;at:string;answers:StrategyAnswers;reviewMonths:number};
 export const moduleStatus=(record:FoundationRecord|null,today:string)=>!record?'Not started':record.status==='Complete'&&record.nextReviewDate&&record.nextReviewDate<=today?'Needs review':record.status;
-export const safeStrategyLink=(value:unknown):value is string=>typeof value==='string'&&/^\/\?strategyOrg=[a-zA-Z0-9-]+&strategyEntity=[a-zA-Z0-9-]+&strategyModule=(foundations|context|audience)$/.test(value);
+export const safeStrategyLink=(value:unknown):value is string=>typeof value==='string'&&/^\/\?strategyOrg=[a-zA-Z0-9-]+&strategyEntity=[a-zA-Z0-9-]+&strategyModule=(foundations|context|audience|market|swot|positioning)$/.test(value);

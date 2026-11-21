@@ -39,9 +39,9 @@ Audited 21 November 2026 against the conversation, the eight supplied developmen
 1. **Complete: user-facing Marketing channels terminology.** Updated settings, filters, workload, automation forms and validation; stored identifiers remain compatible. Build passed; commit 19655e8.
 2. **Complete: Strategy Business Context.** Products/services, revenue priorities and business goals, using the same autosave, reviews, copies and snapshots as Foundations. Build, module-isolation/review tests and visual check passed.
 3. **Complete: Strategy Audience.** Repeatable persona cards for all requested fields, help/examples, autosave, remove/undo, completion checks, independent copies, snapshots and six-month review tasks/events. Build, API tests and browser card/autosave/navigation check passed.
-4. **Strategy Market & Competitors.** Competitor cards, trends and quarterly reviews.
-5. **Strategy SWOT.** Editable quadrants and accept/dismiss suggestions from previous answers.
-6. **Strategy Positioning & Messaging.** Value proposition, persona messages, proof and voice.
+4. **Complete: Strategy Market & Competitors.** Repeatable competitor cards, market trends, quarterly reviews, independent copies and version snapshots.
+5. **Complete: Strategy SWOT.** Four editable quadrants, competitor/Foundations suggestions with persistent accept/dismiss choices, quarterly reviews and snapshots.
+6. **Complete: Strategy Positioning & Messaging.** Value proposition, repeatable persona messages with audience suggestions, proof points, tone of voice and six-month reviews.
 7. **Strategy Objectives & KPIs.** Reuse canonical objectives; timeframe/targets/owner/dates and campaign/task links.
 8. **Strategy Channel Mix.** Shared channel purpose/objective records, genuinely two-way with channel management.
 9. **Strategy Budget & Resources, then Review & Measurement.** Allocations/team/tools and success/cadence; retain explicit money allocations.
@@ -69,6 +69,8 @@ Audited 21 November 2026 against the conversation, the eight supplied developmen
 - 21 November: audited source and delivery notes; recorded previously undisclosed partial delivery and superseded wording. Completed items 1 and 2 sequentially.
 - Incoming palette fix complete: Appearance now works in a local/guest workspace, with device-only persistence clearly labelled; palette choices and Save verified in the browser and build passed (d4dddb1).
 - Sign-in navigation fix: Settings closes the expanded login form when changing sections; the tab now says Existing account and the actual submit button says Sign in to Theory. Browser navigation verified. The browser may still offer saved passwords when the user deliberately focuses a login field; Theory does not control that native popup. No real user sign-in was submitted during this check.
-- Audience completed after the two incoming fixes. Next queued implementation: Market & Competitors. Public promotional site added to the queue. Subsequent requests stay queued until the active item is checked and saved. Codex's message-queue bar is application UI, not something this repository can control.
+- Audience completed after the two incoming fixes. Next queued implementation at that checkpoint: Market & Competitors. Public promotional site added to the queue. Subsequent requests stay queued until the active item is checked and saved. Codex's message-queue bar is application UI, not something this repository can control.
 
 Each item is only marked complete after relevant validation. Later requests to remove controls take precedence over earlier requests to add them. This queue records the work; it does not install a timed automation or promise background execution while Codex is closed.
+
+- 21 November continuation: implemented Market & Competitors, SWOT and Positioning & Messaging. Build and expanded Strategy API tests passed; browser verified the new forms and responsive SWOT quadrants. No domain is configured (confirmed by user); public deployment and live integration setup remain pending. Next: canonical Objectives & KPIs integration.
