@@ -50,6 +50,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
   let path=new URL(req.url,'http://localhost').pathname;let explicitNoteScope=false;if(!path.startsWith('/api/'))return next();
   let auditUser=null;const send=(status,data)=>{if(status>=200&&status<300&&req.method!=='GET'){const actor=auditUser?.id||data?.user?.id;if(actor){const scope=path.match(/^\/api\/(?:(?:settings|vault)\/)?organisations\/([^/]+)/)?.[1]||(path.startsWith('/api/company-')?auditUser?.company_id:null);settingsLayer.audit(actor,scope||null,req.method+' '+path)}}res.statusCode=status;res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.end(JSON.stringify(data))};
   try{
+   if(await calendarConnections.webhook({req,res,path,bodyOf})!==false)return;
    if(!['GET','POST','PUT','DELETE'].includes(req.method))fail(405,'Method not allowed.');
    if(req.method!=='GET'){
     const origin=req.headers.origin;const protocol=req.socket.encrypted?'https:':'http:';

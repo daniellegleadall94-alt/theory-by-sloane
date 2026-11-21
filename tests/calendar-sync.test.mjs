@@ -8,6 +8,18 @@ import {DatabaseSync} from 'node:sqlite';
 import {randomBytes,createCipheriv} from 'node:crypto';
 import {createCompanyApi} from '../server/company-api.mjs';
 import {externalSyncItem,localSyncItem,applyExternalItem,providerPayload} from '../server/calendar-sync-model.mjs';
+import {exportRecurrence,importRecurrence} from '../server/calendar-recurrence.mjs';
+import {eventOccurrences} from '../src/calendarModel.ts';
+
+test('native event repeat patterns retain weekday, interval, count and local daylight-saving schedule',()=>{
+ for(const provider of ['microsoft','google'])for(const recurrence of [{mode:'daily',interval:2,unit:'days',days:[],count:6},{mode:'weekly',interval:2,unit:'weeks',days:[1,3],count:7},{mode:'monthly',interval:1,unit:'months',days:[],monthlyPattern:'weekday',ordinal:4,weekday:3,count:5}]){
+  const event={title:'Review',start:'2026-03-25T09:00',end:'2026-03-25T10:00',allDay:false,timeZone:'Europe/London',recurrence},rule=exportRecurrence(provider,event),restored=importRecurrence(provider,rule,event.start,event.timeZone);
+  assert.deepEqual(eventOccurrences({...event,recurrence:restored},'2026-03-01','2027-01-01').map(e=>e.start),eventOccurrences(event,'2026-03-01','2027-01-01').map(e=>e.start));
+  const payload=providerPayload(provider,localSyncItem({kind:'event'},event));assert.equal(provider==='google'?payload.start.timeZone:payload.start.timeZone,'Europe/London');
+ }
+ assert.throws(()=>exportRecurrence('google',{start:'2026-01-31',end:'2026-01-31',allDay:true,recurrence:{mode:'monthly',interval:1,days:[]}}),/without changing/);
+ assert.throws(()=>importRecurrence('google',['RRULE:FREQ=MONTHLY;BYMONTHDAY=31'],'2026-01-31'),/without changing/);
+});
 
 test('calendar sync retains all-day boundaries, London summer times, descriptions and completion markers',()=>{
  const row={kind:'task',updated_at:'2026-07-01T12:00:00Z'},task={title:'Launch',due:'2026-07-01',done:true,description:'Details'};
@@ -25,6 +37,8 @@ for(const provider of ['microsoft','google'])test(provider+' two-way mapping, im
  const stamp=(id,body)=>({...body,id,...(google?{etag:'v'+(++serial),updated:new Date().toISOString(),organizer:{self:true}}:{'@odata.etag':'v'+(++serial),lastModifiedDateTime:new Date().toISOString(),isOrganizer:true})});
  const fetchImpl=async(value,options={})=>{
   const url=new URL(value),method=options.method||'GET',body=options.body?JSON.parse(options.body):null,id=decodeURIComponent(url.pathname.split('/').at(-1));
+  if(method==='GET'&&(url.pathname.endsWith('/calendars')||url.pathname.endsWith('/calendarList')))return Response.json(google?{items:[{id:'theory-calendar',summary:'Theory'}]}:{value:[{id:'theory-calendar',name:'Theory'}]});
+  if(url.pathname.endsWith('/calendarView'))return Response.json({value:[...events.values()]});
   if(url.pathname.endsWith('/calendars')&&method==='POST')return Response.json({id:'theory-calendar',name:'Theory',summary:'Theory'});
   if(url.pathname.endsWith('/events')){
    if(method==='GET')return Response.json(google?{items:[...events.values()],nextSyncToken:'cursor'}:{value:[...events.values()]});
@@ -51,6 +65,8 @@ for(const provider of ['microsoft','google'])test(provider+' two-way mapping, im
   assert.equal((await req(owner.cookie,endpoint,'POST',{})).status,400);
   assert.equal((await req(owner.cookie,endpoint,'POST',{confirm:true})).status,200);
   assert.equal(events.size,1);assert.equal(creates,1);
+  const meeting=stamp('invited-meeting',google?{summary:'Team meeting',start:{date:'2026-12-01'},end:{date:'2026-12-02'},attendees:[{email:'colleague@example.test'}]}:{subject:'Team meeting',isAllDay:true,start:{dateTime:'2026-12-01T00:00:00'},end:{dateTime:'2026-12-02T00:00:00'},attendees:[{emailAddress:{address:'colleague@example.test'}}]});events.set(meeting.id,meeting);
+  const shown=await req(owner.cookie,'calendar/external-events?from=2026-12-01&to=2026-12-03');assert.equal(shown.status,200);assert.deepEqual(shown.body.events.map(event=>event.title),['Team meeting']);events.delete(meeting.id);
   assert.equal((await req(owner.cookie,endpoint,'POST',{})).status,200);assert.equal(creates,1);
   const externalId=[...events.keys()][0],remote=events.get(externalId);
   events.set(externalId,stamp(externalId,{...remote,...(google?{summary:'Moved outside',start:{date:'2026-12-03'},end:{date:'2026-12-04'}}:{subject:'Moved outside',start:{dateTime:'2026-12-03T00:00:00'},end:{dateTime:'2026-12-04T00:00:00'}})}));
@@ -80,11 +96,16 @@ for(const provider of ['microsoft','google'])test(provider+' two-way mapping, im
   const companyRemote=events.get(companyLink.external_id);events.set(companyLink.external_id,stamp(companyLink.external_id,{...companyRemote,...(google?{summary:'Forbidden edit'}:{subject:'Forbidden edit'})}));await req(owner.cookie,endpoint,'POST',{});
   assert.equal(JSON.parse(db.prepare('SELECT data FROM workspace_records WHERE record_key=?').get(companyLink.record_key).data).title,'Company item');
   assert.match(db.prepare('SELECT error FROM calendar_sync_links WHERE id=?').get(companyLink.id).error,/access changed/);
-  events.delete(externalId);await req(owner.cookie,endpoint,'POST',{});
+  if(google)events.set(externalId,{id:externalId,status:'cancelled'});else events.delete(externalId);await req(owner.cookie,endpoint,'POST',{});
   let links=(await req(owner.cookie,endpoint)).body.items;const pending=links.find(i=>i.pending==='remote-deleted');assert.ok(pending);assert.equal((await req(owner.cookie,'personal/data/task')).body.records.length,2);
   assert.equal((await req(owner.cookie,endpoint+'/'+pending.id,'POST',{action:'delete-both',confirm:true,version:0})).status,409);
   assert.equal((await req(owner.cookie,endpoint+'/'+pending.id,'POST',{action:'delete-both',confirm:true,version:pending.version})).status,200);
   assert.equal((await req(owner.cookie,'personal/data/task')).body.records.length,1);
+  const nativeEvent=(await req(owner.cookie,'personal/data/event','POST',{id:'native-series',calendarEvent:true,title:'Weekly review',start:'2026-12-01',end:'2026-12-01',allDay:true,timeZone:'Europe/London',notes:'Series notes',unitIds:[],recurrence:{mode:'weekly',interval:1,unit:'weeks',days:[2],count:3}})).body.record;
+  assert.ok(nativeEvent);await req(owner.cookie,endpoint,'POST',{});
+  const seriesLink=db.prepare("SELECT l.* FROM calendar_sync_links l JOIN workspace_records r ON r.record_key=l.record_key WHERE r.external_id='native-series'").get(),series=events.get(seriesLink.external_id);assert.ok(series,seriesLink.error);assert.ok(series.recurrence);
+  events.set(series.id,stamp(series.id,{...series,recurrence:google?['RRULE:FREQ=WEEKLY;INTERVAL=1;WKST=MO;BYDAY=TU;COUNT=5']:{...series.recurrence,range:{...series.recurrence.range,numberOfOccurrences:5}}}));
+  await req(owner.cookie,endpoint,'POST',{});assert.equal((await req(owner.cookie,'personal/data/event/native-series')).body.record.recurrence.count,5);
   await req(owner.cookie,'calendar/connections/account','DELETE');assert.equal((await req(owner.cookie,'personal/data/task')).body.records.length,1);assert.equal(db.prepare('SELECT count(*) n FROM calendar_sync_links').get().n,0);
  }finally{await new Promise(resolve=>server.close(resolve));api.close();db.close();rmSync(dir,{recursive:true,force:true})}
 });

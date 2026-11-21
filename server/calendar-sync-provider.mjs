@@ -8,6 +8,12 @@ export function calendarSyncProvider(account,request){
  return {
   async createCalendar(){return call(root+'/calendars','POST',google?{summary:'Theory',timeZone:'Europe/London'}:{name:'Theory'})},
   async get(calendar,id){try{return await call(eventsUrl(calendar)+'/'+encodeURIComponent(id))}catch(error){if(error.providerStatus===404||error.providerStatus===410)return null;throw error}},
+  async checkSeries(calendar,event,knownEvents){
+   if(!event.recurrence||Array.isArray(event.recurrence)&&!event.recurrence.length)return;
+   if(google){if(knownEvents.some(item=>item.recurringEventId===event.id))throw Error('This series has occurrence changes. Sync is paused until occurrence synchronisation is supported.');return}
+   const details=await call(eventsUrl(calendar)+'/'+encodeURIComponent(event.id)+'?$select=id,exceptionOccurrences,cancelledOccurrences&$expand=exceptionOccurrences');
+   if(details.exceptionOccurrences?.length||details.cancelledOccurrences?.length)throw Error('This series has occurrence changes. Sync is paused until occurrence synchronisation is supported.');
+  },
   async list(calendar,cursor){
    const items=[];let url=eventsUrl(calendar)+(google?'?maxResults=1000&showDeleted=true&singleEvents=false'+(cursor?'&syncToken='+encodeURIComponent(cursor):''):'?$top=250'),nextCursor=null;
    for(let pages=0;url;pages++){
