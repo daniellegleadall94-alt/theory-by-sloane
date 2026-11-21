@@ -1,3 +1,4 @@
+import {validObjective} from '../src/objectiveModel.ts';
 import {completionCycle,parentCycle,blockers} from '../src/workManagement.ts';
 import {validateAccount} from './account-register.mjs';
 import {completeTask,nextOccurrence,validTaskDate} from '../src/work.ts';
@@ -68,6 +69,11 @@ export function createWorkspaceLayer(db){
    if(org&&data.visibility==='private')fail(400,'Company calendar events are visible to authorised company members.');
   }
   if(kind==='strategy'&&(data?.strategyBuilder||existing&&JSON.parse(existing.data).strategyBuilder)&&!options.strategyBuilder)fail(403,'Use the strategy builder to update this record.');
+  if(kind==='objective'&&data){
+   if(!validObjective(data))fail(400,'Check the objective timeframe, target, KPI, progress and due date.');
+   if(data.accountableOwnerId&&(org?!member(data.accountableOwnerId,org)||!canUnits(data.accountableOwnerId,org,data.unitIds||[]):data.accountableOwnerId!==userId))fail(400,'Choose an owner with access to this company.');
+   for(const [field,linkedKind] of [['taskIds','task'],['campaignIds','campaign']])for(const id of data[field]||[]){const linked=one('SELECT * FROM workspace_records WHERE scope=? AND kind=? AND external_id=?',scopeOf(userId,org),linkedKind,id);if(!linked||!canRead(userId,linked))fail(400,'Choose accessible work from this workspace.');}
+  }
   if(kind==='account'&&data)validateAccount(data,{fail,org,userId,member,existing});
   if(!data||typeof data!=='object'||Array.isArray(data))fail(400,'Enter a valid record.');const title=data.title??data.name;if(typeof title!=='string'||!title.trim()||title.length>180)fail(400,'Enter a title or name up to 180 characters.');
   if(['task','campaign'].includes(kind)){const date=kind==='task'?data.due:data.end;if(typeof date!=='string'||!(kind==='task'&&date==='')&&!validTaskDate(date))fail(400,'Choose a valid date.');if(data.start&&!validTaskDate(data.start))fail(400,'Choose a valid start date.');if(data.start&&date&&data.start>date)fail(400,'Start date must be on or before the end date.')}

@@ -1,0 +1,13 @@
+import React from 'react';
+import {companyApi,useCompany} from './Company';
+import {useWorkspace} from './WorkspaceContext';
+import {strategyDay,type FoundationRecord} from './strategyModel';
+export function StrategyDashboard(){
+ const {user}=useCompany(),workspace=useWorkspace(),org=user?.company?.id;
+ const [records,setRecords]=React.useState<FoundationRecord[]>([]),[goals,setGoals]=React.useState<{progress?:number;unitIds?:string[]}[]>([]),[error,setError]=React.useState('');
+ React.useEffect(()=>{let active=true;if(!org){setRecords([]);setGoals([]);return}const load=async()=>{try{const [strategies,objectives]=await Promise.all([companyApi<{records:FoundationRecord[]}>(`organisations/${org}/data/strategy`),companyApi<{records:typeof goals}>(`organisations/${org}/data/objective`)]);if(active){setRecords(strategies.records.filter(record=>record.strategyBuilder));setGoals(objectives.records);setError('')}}catch(e){if(active)setError((e as Error).message)}};void load();window.addEventListener('focus',load);return()=>{active=false;window.removeEventListener('focus',load)}},[org]);
+ if(!org)return null;
+ const selected=workspace.selectedUnitIds,scoped=records.filter(record=>selected.length?selected.includes(record.entityId):record.entityId==='organisation'),completion=Math.round(scoped.filter(record=>record.status==='Complete').length/(Math.max(1,selected.length)*10)*100),reviews=scoped.filter(record=>record.nextReviewDate).sort((a,b)=>a.nextReviewDate!.localeCompare(b.nextReviewDate!)),scopedGoals=goals.filter(goal=>selected.length?goal.unitIds?.some(id=>selected.includes(id)):!goal.unitIds?.length),progress=scopedGoals.length?Math.round(scopedGoals.reduce((sum,goal)=>sum+(goal.progress||0),0)/scopedGoals.length):0;
+ const link=(entity:string,module='foundations')=>'/?strategyOrg='+encodeURIComponent(org)+'&strategyEntity='+encodeURIComponent(entity)+'&strategyModule='+module;
+ return <section className="panel strategy-dashboard"><h2>Strategy progress</h2>{error?<p role="alert">{error}</p>:<><div className="metrics"><div><strong>{completion}%</strong><span>Modules complete</span></div><div><strong>{reviews.filter(record=>record.nextReviewDate!<=strategyDay()).length}</strong><span>Reviews due</span></div><div><strong>{progress}%</strong><span>Average objective progress · {scopedGoals.length} goals</span></div></div>{reviews.slice(0,3).map(record=><a key={record.id} href={link(record.entityId,record.moduleKey)}>{record.moduleKey} · {record.nextReviewDate}{record.nextReviewDate!<=strategyDay()?' · Needs review':''}</a>)}</>}<a className="text-button" href={link(selected[0]||'organisation')}>Open strategy</a></section>;
+}

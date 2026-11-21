@@ -1,3 +1,4 @@
+import {strategyBookPages,wrapBookText} from '../src/strategyBookModel.ts';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -5,6 +6,9 @@ import {createCompanyApi} from '../server/company-api.mjs';
 import {nextStrategyReview,strategyDay,emptyFoundations,foundationFilled,moduleStatus,validateFoundations,emptyStrategyAnswers,validateStrategyAnswers,strategyFilled,safeStrategyLink,emptyPersona,personaFields,emptyCompetitor,competitorFields} from '../src/strategyModel.ts';
 
 test('Foundations dates, partial drafts and review state',()=>{
+ assert.deepEqual(wrapBookText('A'.repeat(140)).map(line=>line.length),[66,66,8]);
+ const book=strategyBookPages('Company',{},['foundations'],[],'21 November 2026');assert.equal(book.length,4);assert.equal(book[2].title,'Foundations');assert.ok(book[2].lines.includes('Not yet answered'));
+
  assert.equal(nextStrategyReview('2026-01-31',1),'2026-02-28');
  assert.equal(nextStrategyReview('2024-02-29',12),'2025-02-28');
  assert.equal(foundationFilled(emptyFoundations()),0);
@@ -90,6 +94,31 @@ test('company Foundations autosave, conflict protection, independent copies, sna
   const positioningComplete=await request(cookie,parent+'/positioning','PUT',{version:0,answers:positioningAnswers,reviewMonths:6,action:'complete'});assert.equal(positioningComplete.status,200,JSON.stringify(positioningComplete.body));
   assert.equal(positioningComplete.body.snapshots.length,1);
   assert.equal((await request(other.cookie,parent+'/positioning')).status,403);
+  const goalData={id:'goal-1',title:'Grow qualified enquiries',timeframe:'Short term',target:'40 per month',kpi:'Qualified enquiries',accountableOwnerId:owner.body.user.id,due:'2027-02-28',progress:10,unitIds:[]};
+  const goal=await request(cookie,base+'/data/objective','POST',goalData);assert.equal(goal.status,201,JSON.stringify(goal.body));
+  assert.equal((await request(cookie,base+'/data/objective','POST',{...goalData,id:'invalid-goal',progress:101})).status,400);
+  assert.equal((await request(cookie,base+'/data/objective','POST',{...goalData,id:'invalid-owner',accountableOwnerId:other.body.user.id})).status,400);
+  assert.equal((await request(cookie,base+'/data/objective','POST',{...goalData,id:'invalid-link',taskIds:['not-accessible']})).status,400);
+  const objectivesComplete=await request(cookie,parent+'/objectives','PUT',{version:0,answers:{goals:['goal-1']},reviewMonths:1,action:'complete'});assert.equal(objectivesComplete.status,200,JSON.stringify(objectivesComplete.body));
+  assert.ok(objectivesComplete.body.snapshots[0].answers.goals[0].includes('40 per month'));
+  const objectivesCopy=await request(cookie,child+'/objectives/copy','POST',{version:0});assert.equal(objectivesCopy.status,200,JSON.stringify(objectivesCopy.body));assert.notEqual(objectivesCopy.body.record.answers.goals[0],'goal-1');
+  const clonedGoal=(await request(cookie,base+'/data/objective/'+objectivesCopy.body.record.answers.goals[0])).body.record;assert.deepEqual(clonedGoal.unitIds,[a.id]);assert.equal(clonedGoal.progress,0);
+  assert.equal((await request(cookie,child+'/objectives','PUT',{version:objectivesCopy.body.record.version,answers:{goals:['goal-1']},reviewMonths:1,action:'save'})).status,400);
+  assert.equal((await request(cookie,child+'/objectives','PUT',{version:objectivesCopy.body.record.version,answers:objectivesCopy.body.record.answers,reviewMonths:1,action:'complete'})).status,200);
+  await request(cookie,base+'/data/objective/goal-1','PUT',{...goal.body.record,target:'50 per month'});
+  assert.ok((await request(cookie,parent+'/objectives')).body.snapshots[0].answers.goals[0].includes('40 per month'));
+  assert.equal((await request(other.cookie,parent+'/people')).status,403);
+  const channelsAnswers={channels:[{id:'channel-1',name:'Email Marketing',purpose:'Nurture customers',objectiveIds:['goal-1']}]};
+  const channelsComplete=await request(cookie,parent+'/channels','PUT',{version:0,answers:channelsAnswers,reviewMonths:3,action:'complete'});assert.equal(channelsComplete.status,200,JSON.stringify(channelsComplete.body));
+  assert.equal((await request(cookie,parent+'/channels','PUT',{version:channelsComplete.body.record.version,answers:{channels:[{...channelsAnswers.channels[0],objectiveIds:['missing']}]},reviewMonths:3,action:'save'})).status,400);
+  const channelCopy=await request(cookie,child+'/channels/copy','POST',{version:0});assert.equal(channelCopy.status,200);assert.deepEqual(channelCopy.body.record.answers.channels[0].objectiveIds,[]);
+  const budgetAnswers={allocations:[{id:'allocation-1',channel:'Email',amount:'2000.50'}],mode:'GBP',team:'Marketing lead',tools:'Email platform'};
+  assert.equal(validateStrategyAnswers('budget',budgetAnswers),true);assert.equal(strategyFilled('budget',budgetAnswers),3);
+  assert.equal(validateStrategyAnswers('budget',{...budgetAnswers,mode:'Percent'}),false);
+  assert.equal(validateStrategyAnswers('budget',{...budgetAnswers,allocations:[{...budgetAnswers.allocations[0],amount:'-1'}]}),false);
+  const budgetComplete=await request(cookie,parent+'/budget','PUT',{version:0,answers:budgetAnswers,reviewMonths:3,action:'complete'});assert.equal(budgetComplete.status,200,JSON.stringify(budgetComplete.body));
+  const measurementComplete=await request(cookie,parent+'/measurement','PUT',{version:0,answers:{success:'Verified CRM enquiries against baseline.',cadence:'Monthly review with Sales.'},reviewMonths:3,action:'complete'});assert.equal(measurementComplete.status,200,JSON.stringify(measurementComplete.body));
+  assert.equal((await request(other.cookie,parent+'/budget')).status,403);
   const invite=await request(cookie,'company-invitations','POST',{email:'restricted@strategy.test'}),restricted=await register('restricted@strategy.test',{invite:invite.body.code});
   await request(cookie,base+'/members/'+restricted.body.user.id,'PUT',{role:'member',accessScope:'selected',unitIds:[a.id]});
   assert.equal((await request(restricted.cookie,child)).status,200);
@@ -106,7 +135,7 @@ test('company Foundations autosave, conflict protection, independent copies, sna
   assert.equal((await request(restricted.cookie,child+'/copy','POST',{version:reviewed.body.record.version})).status,403);
   const next=new Date(complete.body.record.nextReviewDate+'T13:00:00Z');api.runStrategyReviews(next);api.runStrategyReviews(next);
   const tasks=(await request(cookie,base+'/data/task')).body.records.filter(task=>task.strategyLink),events=(await request(cookie,base+'/data/event')).body.records.filter(event=>event.strategyLink);
-  assert.equal(tasks.length,10);assert.equal(events.length,10);assert.ok(tasks.every(task=>task.plannedDate===strategyDay(next)));assert.ok(events.every(event=>event.calendarEvent&&event.allDay));assert.ok(tasks.some(task=>task.unitIds.includes(a.id)));
+  assert.equal(tasks.length,15);assert.equal(events.length,15);assert.ok(tasks.every(task=>task.plannedDate===strategyDay(next)));assert.ok(events.every(event=>event.calendarEvent&&event.allDay));assert.ok(tasks.some(task=>task.unitIds.includes(a.id)));
   assert.equal(tasks.filter(task=>task.strategyLink.endsWith('strategyModule=context')).length,2);
   assert.equal(tasks.filter(task=>task.strategyLink.endsWith('strategyModule=audience')).length,2);
   assert.ok(tasks.every(task=>safeStrategyLink(task.strategyLink)));

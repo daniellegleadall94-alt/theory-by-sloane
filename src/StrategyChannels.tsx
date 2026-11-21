@@ -1,0 +1,27 @@
+import React from 'react';
+import {companyApi,useCompany} from './Company';
+import {useWorkspace} from './WorkspaceContext';
+import {marketingChannelGroups} from './channelPreferences';
+import type {StrategyChannel,FoundationRecord} from './strategyModel';
+
+export function StrategyChannels({org,entity,value,disabled,onChange,only}:{org:string;entity:string;value:StrategyChannel[];disabled:boolean;onChange:(value:StrategyChannel[])=>void;only?:string}){
+ const workspace=useWorkspace(),[goals,setGoals]=React.useState<{id:string;title:string;unitIds:string[];visibility?:string}[]>([]),[error,setError]=React.useState('');
+ const organisation=workspace.organisations.find(item=>item.id===org),unit=organisation?.units.find(item=>item.id===entity);
+ const allowed=unit?.channels.length?unit.channels:organisation?.disciplines.length?organisation.disciplines:marketingChannelGroups.flatMap(group=>group.items);
+ React.useEffect(()=>{if(org)void companyApi<{records:typeof goals}>(`organisations/${org}/data/objective`).then(data=>setGoals(data.records.filter(goal=>goal.visibility!=='private'&&(entity==='organisation'?!goal.unitIds.length:goal.unitIds.length===1&&goal.unitIds[0]===entity)))).catch(e=>setError(e.message))},[org,entity]);
+ const update=(id:string,patch:Partial<StrategyChannel>)=>onChange(value.map(item=>item.id===id?{...item,...patch}:item));
+ return <div className="strategy-channels">{error&&<p role="alert">{error}</p>}{value.filter(item=>!only||item.name===only).map(channel=><section className="strategy-persona" key={channel.id}><h4>{channel.name}</h4><label>Purpose<textarea rows={3} maxLength={6000} value={channel.purpose} disabled={disabled} onChange={event=>update(channel.id,{purpose:event.target.value})}/></label><fieldset disabled={disabled}><legend>Linked objectives</legend>{goals.map(goal=><label key={goal.id}><input type="checkbox" checked={channel.objectiveIds.includes(goal.id)} onChange={event=>update(channel.id,{objectiveIds:event.target.checked?[...channel.objectiveIds,goal.id]:channel.objectiveIds.filter(id=>id!==goal.id)})}/>{goal.title}</label>)}{channel.objectiveIds.filter(id=>!goals.some(goal=>goal.id===id)).map(id=><label key={id}><input type="checkbox" checked onChange={()=>update(channel.id,{objectiveIds:channel.objectiveIds.filter(item=>item!==id)})}/>Unavailable objective · untick to remove</label>)}{!goals.length&&<p>Add company objectives in Strategy → Objectives & KPIs.</p>}</fieldset><button className="text-button" disabled={disabled} onClick={()=>onChange(value.filter(item=>item.id!==channel.id))}>Remove from channel mix</button></section>)}<label>Add channel<select value="" disabled={disabled||value.length>=100} onChange={event=>{if(event.target.value)onChange([...value,{id:crypto.randomUUID(),name:event.target.value,purpose:'',objectiveIds:[]}])}}><option value="">Choose a channel</option>{(only?[only]:allowed).filter(name=>!value.some(item=>item.name===name)).map(name=><option key={name}>{name}</option>)}</select></label></div>;
+}
+
+export function ChannelStrategy({channel}:{channel:string}){
+ const {user}=useCompany(),workspace=useWorkspace(),org=user?.company?.id;
+ const entity=workspace.selectedUnitIds.length===1?workspace.selectedUnitIds[0]:'organisation';
+ const [record,setRecord]=React.useState<FoundationRecord|null>(null),[value,setValue]=React.useState<StrategyChannel[]>([]),[canEdit,setCanEdit]=React.useState(false),[error,setError]=React.useState(''),[notice,setNotice]=React.useState('');
+ const queued=React.useRef(Promise.resolve()),version=React.useRef({value:0,failed:false}),generation=React.useRef(0);
+ const path=`strategies/${org}/${entity}/channels`;
+ React.useEffect(()=>{const ticket=++generation.current;setCanEdit(false);setError('');setValue([]);setRecord(null);version.current={value:0,failed:false};if(org)void companyApi<{record:FoundationRecord|null;canEdit:boolean}>(path).then(data=>{if(ticket!==generation.current)return;version.current.value=data.record?.version||0;setRecord(data.record);setValue((data.record?.answers.channels||[]) as StrategyChannel[]);setCanEdit(data.canEdit)}).catch(e=>setError(e.message));return()=>{generation.current++}},[path]);
+ const change=(next:StrategyChannel[])=>{setValue(next);setNotice('Saving…');const state=version.current;const ticket=generation.current,months=record?.reviewMonths??3;queued.current=queued.current.then(async()=>{try{if(state.failed)return;const data=await companyApi<{record:FoundationRecord}>(path,'PUT',{version:state.value,answers:{channels:next},reviewMonths:months,action:'save'});state.value=data.record.version;if(ticket===generation.current){setRecord(data.record);setNotice('Saved to Channel Mix');setError('')}}catch(e){state.failed=true;if(ticket===generation.current){setError((e as Error).message);setNotice('Changes could not be saved');setCanEdit(false)}}})};
+ if(!org)return null;
+ if(workspace.selectedUnitIds.length>1)return <p>Select one company to edit its channel purpose and objectives.</p>;
+ return <details className="panel"><summary>Channel purpose & strategic goals</summary><p>Shared with this {entity==='organisation'?'organisation':'company'}’s Strategy → Channel Mix.</p>{error&&<p role="alert">{error} Reopen this page to reload the current version.</p>}<p role="status">{notice}</p><StrategyChannels org={org} entity={entity} value={value} disabled={!canEdit} onChange={change} only={channel}/></details>;
+}
