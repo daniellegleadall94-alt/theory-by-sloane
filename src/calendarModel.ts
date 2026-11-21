@@ -2,7 +2,7 @@ import {nextOccurrence,reminderInstant,type Recurrence} from './work.ts';
 import {addDays,dayDistance,weekStart} from './overview.ts';
 
 export type CalendarView='Day'|'Week'|'Month'|'Year'|'List';
-export type CalendarEvent={id:string;title:string;start:string;end:string;allDay:boolean;timeZone:string;location?:string;notes?:string;attendees?:string;attendeeIds?:string[];organisationId?:string|null;unitIds:string[];channel?:string;colour?:string;recurrence?:Recurrence;exceptions?:Record<string,Partial<CalendarEvent>&{cancelled?:boolean}>;version?:number;ownerId?:string;canEdit?:boolean};
+export type CalendarEvent={strategyLink?:string;id:string;title:string;start:string;end:string;allDay:boolean;timeZone:string;location?:string;notes?:string;attendees?:string;attendeeIds?:string[];organisationId?:string|null;unitIds:string[];channel?:string;colour?:string;recurrence?:Recurrence;exceptions?:Record<string,Partial<CalendarEvent>&{cancelled?:boolean}>;version?:number;ownerId?:string;canEdit?:boolean};
 export type CalendarPrefs={view:CalendarView;hidden:string[];colours:Record<string,string>};
 export const defaultCalendarPrefs:CalendarPrefs={view:'Week',hidden:[],colours:{}};
 export const calendarPalette=['#426B58','#356DA8','#8055A1','#B0523E','#A47724','#287C83','#AB4E77','#5E6572'];

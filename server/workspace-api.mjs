@@ -67,6 +67,7 @@ export function createWorkspaceLayer(db){
    if(data.attendeeIds&&(!Array.isArray(data.attendeeIds)||data.attendeeIds.length>200||data.attendeeIds.some(id=>typeof id!=='string'||(org?!member(id,org):id!==userId))))fail(400,'Choose team members from this organisation.');
    if(org&&data.visibility==='private')fail(400,'Company calendar events are visible to authorised company members.');
   }
+  if(kind==='strategy'&&(data?.strategyBuilder||existing&&JSON.parse(existing.data).strategyBuilder)&&!options.strategyBuilder)fail(403,'Use the strategy builder to update this record.');
   if(kind==='account'&&data)validateAccount(data,{fail,org,userId,member,existing});
   if(!data||typeof data!=='object'||Array.isArray(data))fail(400,'Enter a valid record.');const title=data.title??data.name;if(typeof title!=='string'||!title.trim()||title.length>180)fail(400,'Enter a title or name up to 180 characters.');
   if(['task','campaign'].includes(kind)){const date=kind==='task'?data.due:data.end;if(typeof date!=='string'||!(kind==='task'&&date==='')&&!validTaskDate(date))fail(400,'Choose a valid date.');if(data.start&&!validTaskDate(data.start))fail(400,'Choose a valid start date.');if(data.start&&date&&data.start>date)fail(400,'Start date must be on or before the end date.')}

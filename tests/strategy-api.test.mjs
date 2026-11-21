@@ -1,0 +1,48 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {createCompanyApi} from '../server/company-api.mjs';
+import {nextStrategyReview,strategyDay,emptyFoundations,foundationFilled,moduleStatus,validateFoundations} from '../src/strategyModel.ts';
+
+test('Foundations dates, partial drafts and review state',()=>{
+ assert.equal(nextStrategyReview('2026-01-31',1),'2026-02-28');
+ assert.equal(nextStrategyReview('2024-02-29',12),'2025-02-28');
+ assert.equal(foundationFilled(emptyFoundations()),0);
+ assert.equal(validateFoundations({...emptyFoundations(),values:['Care']}),true);
+ assert.equal(validateFoundations({...emptyFoundations(),values:['x'.repeat(81)]}),false);
+ assert.equal(moduleStatus({status:'Complete',nextReviewDate:'2026-11-01'},'2026-11-21'),'Needs review');
+});
+test('company Foundations autosave, conflict protection, independent copies, snapshots, isolation and duplicate-free reviews',async()=>{
+ const api=createCompanyApi({databasePath:':memory:'}),server=createServer(api.middleware);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin=`http://127.0.0.1:${server.address().port}`;
+ const request=async(cookie,path,method='GET',body)=>{const response=await fetch(origin+'/api/'+path,{method,headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie||''},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,body:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]}};
+ const register=(email,extra={})=>request('','auth/register','POST',{name:email,email,password:'Strategy tests password 2026',...extra});
+ try{
+  const owner=await register('owner@strategy.test',{companyName:'Strategy organisation'}),other=await register('other@strategy.test',{companyName:'Other'}),cookie=owner.cookie,org=owner.body.user.company.id,base=`organisations/${org}`;
+  const a=(await request(cookie,base+'/units','POST',{name:'Company A',channels:[]})).body.unit,b=(await request(cookie,base+'/units','POST',{name:'Company B',channels:[]})).body.unit;
+  const parent=`strategies/${org}/organisation`,child=`strategies/${org}/${a.id}`;
+  assert.equal((await request('',parent)).status,401);
+  assert.equal((await request(other.cookie,parent)).status,403);
+  const answers={mission:'Help local retailers grow.',vision:'Thriving communities.',values:['Care','Clarity'],brandPromise:'Practical marketing.',why:'Help good businesses be seen.'};
+  const draft=await request(cookie,parent,'PUT',{version:0,answers:{...emptyFoundations(),mission:answers.mission},reviewMonths:12,action:'save'});assert.equal(draft.status,200,JSON.stringify(draft.body));assert.equal(draft.body.record.status,'In progress');
+  assert.equal((await request(cookie,parent,'PUT',{version:0,answers,reviewMonths:12,action:'save'})).status,409);
+  assert.equal((await request(cookie,parent,'PUT',{version:draft.body.record.version,answers:emptyFoundations(),reviewMonths:12,action:'complete'})).status,400);
+  const complete=await request(cookie,parent,'PUT',{version:draft.body.record.version,answers,reviewMonths:12,action:'complete'});assert.equal(complete.status,200);assert.equal(complete.body.record.status,'Complete');assert.equal(complete.body.snapshots.length,1);assert.equal(complete.body.snapshots[0].reason,'Completed');
+  const copy=await request(cookie,child+'/copy','POST',{version:0});assert.equal(copy.status,200,JSON.stringify(copy.body));assert.deepEqual(copy.body.record.answers,answers);assert.equal(copy.body.record.status,'In progress');assert.equal(copy.body.snapshots.length,0);
+  const changed=await request(cookie,child,'PUT',{version:copy.body.record.version,answers:{...answers,mission:'Independent company mission.'},reviewMonths:3,action:'complete'});assert.equal(changed.status,200);assert.equal((await request(cookie,parent)).body.record.answers.mission,answers.mission);
+  const reviewed=await request(cookie,child,'PUT',{version:changed.body.record.version,answers:changed.body.record.answers,reviewMonths:3,action:'review'});assert.equal(reviewed.body.snapshots.length,2);assert.equal(reviewed.body.snapshots[0].reason,'Reviewed');
+  const generic=await request(cookie,base+'/data/strategy/'+reviewed.body.record.id,'PUT',{...reviewed.body.record,answers:emptyFoundations()});assert.equal(generic.status,403,JSON.stringify(generic.body));
+  const invite=await request(cookie,'company-invitations','POST',{email:'restricted@strategy.test'}),restricted=await register('restricted@strategy.test',{invite:invite.body.code});
+  await request(cookie,base+'/members/'+restricted.body.user.id,'PUT',{role:'member',accessScope:'selected',unitIds:[a.id]});
+  assert.equal((await request(restricted.cookie,child)).status,200);
+  assert.equal((await request(restricted.cookie,parent)).status,403);
+  assert.equal((await request(restricted.cookie,`strategies/${org}/${b.id}`)).status,403);
+  assert.equal((await request(restricted.cookie,child,'PUT',{version:reviewed.body.record.version,answers,reviewMonths:3,action:'save'})).status,403);
+  assert.equal((await request(restricted.cookie,child+'/copy','POST',{version:reviewed.body.record.version})).status,403);
+  const next=new Date(complete.body.record.nextReviewDate+'T13:00:00Z');api.runStrategyReviews(next);api.runStrategyReviews(next);
+  const tasks=(await request(cookie,base+'/data/task')).body.records.filter(task=>task.strategyLink),events=(await request(cookie,base+'/data/event')).body.records.filter(event=>event.strategyLink);
+  assert.equal(tasks.length,2);assert.equal(events.length,2);assert.ok(tasks.every(task=>task.plannedDate===strategyDay(next)));assert.ok(events.every(event=>event.calendarEvent&&event.allDay));assert.ok(tasks.some(task=>task.unitIds.includes(a.id)));
+  assert.equal((await request(restricted.cookie,'settings/'+base+'/leave','POST',{currentPassword:'Strategy tests password 2026',confirmation:'Strategy organisation'})).status,200);
+  assert.equal((await request(restricted.cookie,child)).status,403);
+  assert.equal((await request(cookie,child)).body.record.answers.mission,'Independent company mission.');
+ }finally{await new Promise(resolve=>server.close(resolve));api.close()}
+});
