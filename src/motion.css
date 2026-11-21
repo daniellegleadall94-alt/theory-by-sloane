@@ -21,3 +21,7 @@
 html[data-motion=reduced] *,html[data-motion=reduced] *::before,html[data-motion=reduced] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 html[data-motion=reduced] .app :is(.campaign-card,.my-work-destination,.palette-card,.sticky-note):hover{transform:none}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.app :is(.campaign-card,.my-work-destination,.palette-card,.sticky-note):hover{transform:none}}
+
+/* Reduced motion also suppresses button press scaling, not just hover lifts. */
+html[data-motion=reduced] .app .primary:active{transform:none}
+@media(prefers-reduced-motion:reduce){.app .primary:active{transform:none}}

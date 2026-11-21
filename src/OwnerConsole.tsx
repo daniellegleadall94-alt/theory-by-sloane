@@ -1,3 +1,4 @@
+import {OwnerSupport} from './OwnerSupport';
 import {useEffect,useState,useRef} from 'react';
 import {ShieldCheck,ArrowUpRight,LayoutDashboard,Users,Building2,Wallet,Activity,ScrollText,LogOut,ArrowUp,ArrowDown,EyeOff,RotateCcw} from 'lucide-react';
 import './owner.css';
@@ -8,7 +9,7 @@ type Row=Record<string,string|number|boolean|null>;
 async function api(path:string,body?:unknown,method=body?'POST':'GET'){
  const response=await fetch('/api/owner/'+path,{method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(data.error||'Unable to complete this action.');return data;
 }
-const destinations=[{id:'overview',name:'Executive overview',icon:LayoutDashboard},{id:'users',name:'People',icon:Users},{id:'organisations',name:'Organisations',icon:Building2},{id:'billing',name:'Subscriptions',icon:Wallet},{id:'technical',name:'System health',icon:Activity},{id:'audit',name:'Audit history',icon:ScrollText}];
+const destinations=[{id:'overview',name:'Executive overview',icon:LayoutDashboard},{id:'users',name:'People',icon:Users},{id:'organisations',name:'Organisations',icon:Building2},{id:'billing',name:'Subscriptions',icon:Wallet},{id:'technical',name:'System health',icon:Activity},{id:'support',name:'Support cases',icon:Users},{id:'audit',name:'Audit history',icon:ScrollText}];
 export function OwnerConsole(){
  const [session,setSession]=useState<{configured:boolean;passwordLogin?:boolean;staffIdentityLogin?:boolean;staff:Staff|null}|null>(null),[page,setPage]=useState('overview'),[error,setError]=useState(''),[busy,setBusy]=useState(false),[data,setData]=useState<any>(null),[query,setQuery]=useState(''),[status,setStatus]=useState('all'),[offset,setOffset]=useState(0),[range,setRange]=useState('30'),[from,setFrom]=useState(''),[to,setTo]=useState(''),[layout,setLayout]=useState<{id:string;hidden:boolean}[]>([]),[detail,setDetail]=useState<any>(null),[orgDetail,setOrgDetail]=useState<any>(null),[confirmation,setConfirmation]=useState(''),[action,setAction]=useState(''),[saved,setSaved]=useState('');
  const pageMotion=usePageMotion(page);const requestGeneration=useRef(0);
@@ -53,7 +54,7 @@ export function OwnerConsole(){
 <h1>Theory Owner Console</h1>
 <p>Run the platform with a clear view of your people, organisations and operations.</p>
 {session.passwordLogin?<><p className="owner-muted">Sign in with your existing Theory account. Access is restricted to the explicitly approved owner.</p><form className="owner-password-form" onSubmit={e=>{e.preventDefault();void passwordSignIn(e.currentTarget)}}><label>Email<input autoFocus name="email" type="email" autoComplete="username" maxLength={254} required/></label><label>Password<input name="password" type="password" autoComplete="current-password" maxLength={256} required/></label><button className="primary" disabled={busy}>{busy?'Signing in…':'Sign in to Owner Console'}</button></form>{session.staffIdentityLogin&&<button disabled={busy} onClick={signIn}>Sign in with staff identity</button>}</>:<><div className="owner-notice">Staff access requires an approved internal identity and verified multi-factor authentication. Customer and company administrator accounts do not grant access.</div><button className="primary" disabled={!session.configured||busy} onClick={signIn}>{session.configured?'Sign in with staff identity':'Owner sign-in not configured'}</button>{!session.configured&&<p className="owner-muted">Owner access must be explicitly enabled for an existing Theory account by the server operator.</p>}{new URLSearchParams(location.search).get('auth')&&!['success'].includes(new URLSearchParams(location.search).get('auth')!)&&<p role="alert">Sign-in did not complete. An approved identity and a fresh MFA challenge are required.</p>}</>}</section>:<>
-<h1 className="owner-accessible-title">{destinations.find(d=>d.id===page)?.name}</h1>{page==='overview'&&<>
+<h1 className="owner-accessible-title">{destinations.find(d=>d.id===page)?.name}</h1>{page==='support'&&<OwnerSupport api={api}/>} {page==='overview'&&<>
 <div className="owner-toolbar">
 <label>Reporting period<select value={range} onChange={e=>setRange(e.target.value)}>{[['today','Today'],['yesterday','Yesterday'],['7','Last 7 days'],['30','Last 30 days'],['month','This month'],['previous-month','Previous month'],['quarter','This quarter'],['custom','Custom range']].map(([v,l])=>
 <option key={v} value={v}>{l}</option>)}</select>

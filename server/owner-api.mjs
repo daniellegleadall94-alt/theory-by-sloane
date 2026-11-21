@@ -1,12 +1,13 @@
+import {createOwnerSupport} from './owner-support.mjs';
 import * as oidc from 'openid-client';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {verifyTheoryPassword} from './theory-password.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const fail=(status,message)=>{throw Object.assign(Error(message),{status})};
 export const platformRoles={
- 'Platform Owner':['overview','users','organisations','billing','technical','audit','users.manage','export'],
- 'Platform Administrator':['overview','users','organisations','technical','audit','users.manage'],
- 'Customer Support':['users','organisations'],
+ 'Platform Owner':['support','overview','users','organisations','billing','technical','audit','users.manage','export'],
+ 'Platform Administrator':['support','overview','users','organisations','technical','audit','users.manage'],
+ 'Customer Support':['support','users','organisations'],
  'Billing Administrator':['billing','organisations'],
  'Marketing / Growth Administrator':['overview'],
  'Technical Administrator':['technical','audit'],
@@ -34,6 +35,7 @@ export function createOwnerLayer(db,{env=process.env,client=oidc}={}){
  const enabled=()=>!!(origin&&issuer&&env.THEORY_OWNER_CLIENT_ID&&env.THEORY_OWNER_CLIENT_SECRET&&staff.length);
  let configuration;const config=async()=>{if(!configuration){configuration=await client.discovery(new URL(issuer),env.THEORY_OWNER_CLIENT_ID,env.THEORY_OWNER_CLIENT_SECRET,undefined,{timeout:15});client.enableNonRepudiationChecks(configuration)}return configuration};
  const audit=(actor,action,target=null)=>run('INSERT INTO owner_audit VALUES(?,?,?,?,?)',randomUUID(),actor,action,target,new Date().toISOString());
+ const support=createOwnerSupport(db,audit);
  const cookie=(req,res,name,value,age,sameSite='Strict')=>{const previous=res.getHeader('Set-Cookie');res.setHeader('Set-Cookie',[...(Array.isArray(previous)?previous:previous?[previous]:[]),`${name}=${value}; Path=/api/owner; HttpOnly; SameSite=${sameSite}; Max-Age=${age}${req.socket.encrypted||origin?.startsWith('https:')?'; Secure':''}`])};
  const readCookie=(req,name)=>String(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith(name+'='))?.slice(name.length+1);
  const auth=req=>{const token=readCookie(req,'theory_owner');if(!token)return null;const session=one('SELECT * FROM owner_sessions WHERE token=? AND expires>? AND last_seen>?',hash(token),Date.now(),Date.now()-900000);if(!session)return null;let person;
@@ -52,7 +54,9 @@ export function createOwnerLayer(db,{env=process.env,client=oidc}={}){
  {id:'memberships',label:'Organisation memberships',value:count('SELECT count(*) n FROM memberships'),note:'One person may have several memberships',destination:'organisations'},
  {id:'trials',label:'Active trials',value:count("SELECT count(*) n FROM organisation_subscriptions s JOIN companies c ON c.id=s.organisation_id WHERE "+orgWhere+" AND s.status='trialing' AND s.trial_ends_at>?",new Date().toISOString()),note:'Real trial records; current total',destination:'billing'},
  {id:'expiring',label:'Trials ending within 7 days',value:count("SELECT count(*) n FROM organisation_subscriptions WHERE status='trialing' AND trial_ends_at>? AND trial_ends_at<=?",new Date().toISOString(),new Date(Date.now()+7*86400000).toISOString()),note:'Current rolling seven days',destination:'billing'},
- ...['Monthly recurring revenue','Annual recurring revenue','Paying organisations','Paid seats','Churn & conversion','Active & online people','Product adoption','Website traffic & acquisition','Availability & error rate'].map((label,i)=>({id:'unavailable'+i,label,value:null,note:i<5?'Not connected · billing provider':i<7?'Data unavailable · activity measurement not configured':i===7?'Not connected · website analytics':'Not connected · monitoring provider'}))]}};
+ ...[[1,'Daily active people'],[7,'Weekly active people'],[30,'Monthly active people']].map(([days,label])=>({id:'active'+days,label,value:count('SELECT count(DISTINCT user_id) n FROM user_activity_days WHERE day>=?',new Date(Date.now()-(days-1)*86400000).toISOString().slice(0,10)),note:'Visible, recently interacted-with signed-in app; rolling UTC days; measured since installation'})),
+ {id:'online',label:'Recently online',value:count('SELECT count(*) n FROM user_activity WHERE last_seen>?',Date.now()-120000),note:'Visible active app reported within two minutes; approximate presence'},
+ ...['Monthly recurring revenue','Annual recurring revenue','Paying organisations','Paid seats','Churn & conversion','Product adoption','Website traffic & acquisition','Availability & error rate'].map((label,i)=>({id:'unavailable'+i,label,value:null,note:i<5?'Not connected · billing provider':i<6?'Data unavailable · feature measurement not configured':i===6?'Not connected · website analytics':'Not connected · monitoring provider'}))]}};
  return {async handle({req,res,path,send,bodyOf}){
   if(!path.startsWith('/api/owner/'))return false;
   res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cache-Control','no-store');
@@ -93,6 +97,7 @@ export function createOwnerLayer(db,{env=process.env,client=oidc}={}){
    }catch{audit('unverified','sign-in-failed');return redirect('failed')}
   }
   const actor=auth(req);if(!actor)fail(401,'Approved owner or internal staff sign-in is required.');
+  if(await support({req,path,actor,bodyOf,send})!==false)return;
   if(path==='/api/owner/logout'&&req.method==='POST'){run('DELETE FROM owner_sessions WHERE token=?',hash(readCookie(req,'theory_owner')));cookie(req,res,'theory_owner','',0);audit(actor.subject,'sign-out');return send(200,{ok:true})}
   if(path==='/api/owner/layout'){
    allowed(actor,'overview');if(req.method==='GET')return send(200,{layout:JSON.parse(one('SELECT data FROM owner_layout WHERE subject=?',actor.subject)?.data||'[]')});
