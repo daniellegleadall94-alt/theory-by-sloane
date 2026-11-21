@@ -38,7 +38,7 @@ Audited 21 November 2026 against the conversation, the eight supplied developmen
 
 1. **Complete: user-facing Marketing channels terminology.** Updated settings, filters, workload, automation forms and validation; stored identifiers remain compatible. Build passed; commit 19655e8.
 2. **Complete: Strategy Business Context.** Products/services, revenue priorities and business goals, using the same autosave, reviews, copies and snapshots as Foundations. Build, module-isolation/review tests and visual check passed.
-3. **Strategy Audience.** Repeatable persona cards and six-month review cadence.
+3. **Complete: Strategy Audience.** Repeatable persona cards for all requested fields, help/examples, autosave, remove/undo, completion checks, independent copies, snapshots and six-month review tasks/events. Build, API tests and browser card/autosave/navigation check passed.
 4. **Strategy Market & Competitors.** Competitor cards, trends and quarterly reviews.
 5. **Strategy SWOT.** Editable quadrants and accept/dismiss suggestions from previous answers.
 6. **Strategy Positioning & Messaging.** Value proposition, persona messages, proof and voice.
@@ -53,6 +53,7 @@ Audited 21 November 2026 against the conversation, the eight supplied developmen
 15. **Settings operational completion.** Password reset/verified email changes, invitation and notification email delivery, MFA enrolment, actual retention/closure processing. Provider and policy decisions required before live delivery/destruction.
 16. **Owner console expansion.** Product activity/online presence, support cases, organisation lifecycle/entitlements and monitoring. Payments/revenue/website analytics require genuine integrations. Supplied owner brief ends at “Trial subscriptions”; no unseen remainder is claimed implemented.
 17. **Marketing expansion roadmap.** Versioned asset proofing and ordered approvals; content planning/distribution; richer portfolio health; budgets planned/committed/actual; results provenance/attribution; structured reviews; contact/CRM and specialist social/email/SEO/PR workspaces; broader import/export/search; optional service integrations. Existing task directories and generic records are foundations, not delivery of these specialist products.
+18. **Public promotional website (new request, queued).** Up to two pages as the public first destination, introducing Theory with Register and Sign in leading into the portal. Reuse existing account creation and sign-in; keep public marketing separate from authenticated workspace routes. Domain/public deployment remains a configuration decision. Do not fabricate pricing, testimonials or unimplemented feature claims.
 
 ## External setup and deliberately deferred boundaries
 
@@ -68,6 +69,6 @@ Audited 21 November 2026 against the conversation, the eight supplied developmen
 - 21 November: audited source and delivery notes; recorded previously undisclosed partial delivery and superseded wording. Completed items 1 and 2 sequentially.
 - Incoming palette fix complete: Appearance now works in a local/guest workspace, with device-only persistence clearly labelled; palette choices and Save verified in the browser and build passed (d4dddb1).
 - Sign-in navigation fix: Settings closes the expanded login form when changing sections; the tab now says Existing account and the actual submit button says Sign in to Theory. Browser navigation verified. The browser may still offer saved passwords when the user deliberately focuses a login field; Theory does not control that native popup. No real user sign-in was submitted during this check.
-- Next queued implementation: Audience. Subsequent requests stay queued until the active item is checked and saved. Codex's message-queue bar is application UI, not something this repository can control.
+- Audience completed after the two incoming fixes. Next queued implementation: Market & Competitors. Public promotional site added to the queue. Subsequent requests stay queued until the active item is checked and saved. Codex's message-queue bar is application UI, not something this repository can control.
 
 Each item is only marked complete after relevant validation. Later requests to remove controls take precedence over earlier requests to add them. This queue records the work; it does not install a timed automation or promise background execution while Codex is closed.

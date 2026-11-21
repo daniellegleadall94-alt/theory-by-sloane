@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {createCompanyApi} from '../server/company-api.mjs';
-import {nextStrategyReview,strategyDay,emptyFoundations,foundationFilled,moduleStatus,validateFoundations,emptyStrategyAnswers,validateStrategyAnswers,strategyFilled,safeStrategyLink} from '../src/strategyModel.ts';
+import {nextStrategyReview,strategyDay,emptyFoundations,foundationFilled,moduleStatus,validateFoundations,emptyStrategyAnswers,validateStrategyAnswers,strategyFilled,safeStrategyLink,emptyPersona,personaFields} from '../src/strategyModel.ts';
 
 test('Foundations dates, partial drafts and review state',()=>{
  assert.equal(nextStrategyReview('2026-01-31',1),'2026-02-28');
@@ -51,11 +51,27 @@ test('company Foundations autosave, conflict protection, independent copies, sna
   assert.equal(contextReviewed.body.snapshots.length,2);assert.equal(contextReviewed.body.snapshots[0].reason,'Reviewed');
   assert.equal((await request(other.cookie,contextParent)).status,403);
   assert.equal((await request(cookie,base+'/data/strategy/'+contextComplete.body.record.id,'PUT',{...contextComplete.body.record,answers:contextAnswers})).status,403);
+  const audienceParent=parent+'/audience',audienceChild=child+'/audience';
+  const persona={...emptyPersona('persona-one'),...Object.fromEntries(personaFields.map(field=>[field.key,'Specific '+field.label]))};
+  assert.equal(strategyFilled('audience',{personas:[emptyPersona('draft')]}),0);
+  assert.equal(validateStrategyAnswers('audience',{personas:[persona,persona]}),false);
+  assert.equal(validateStrategyAnswers('audience',{personas:[{...persona,name:'x'.repeat(201)}]}),false);
+  assert.equal(validateStrategyAnswers('audience',{personas:[{...persona,unknown:'field'}]}),false);
+  const audienceDraft=await request(cookie,audienceParent,'PUT',{version:0,answers:{personas:[emptyPersona('draft')]},reviewMonths:6,action:'save'});assert.equal(audienceDraft.status,200);
+  assert.equal((await request(cookie,audienceParent,'PUT',{version:audienceDraft.body.record.version,answers:audienceDraft.body.record.answers,reviewMonths:6,action:'complete'})).status,400);
+  const audienceComplete=await request(cookie,audienceParent,'PUT',{version:audienceDraft.body.record.version,answers:{personas:[persona]},reviewMonths:6,action:'complete'});assert.equal(audienceComplete.status,200,JSON.stringify(audienceComplete.body));
+  const audienceCopy=await request(cookie,audienceChild+'/copy','POST',{version:0});assert.equal(audienceCopy.status,200);assert.deepEqual(audienceCopy.body.record.answers,{personas:[persona]});
+  const audienceChanged=await request(cookie,audienceChild,'PUT',{version:audienceCopy.body.record.version,answers:{personas:[{...persona,name:'Company-specific audience'}]},reviewMonths:6,action:'complete'});assert.equal(audienceChanged.status,200);
+  assert.equal((await request(cookie,audienceParent)).body.record.answers.personas[0].name,persona.name);
+  const audienceReviewed=await request(cookie,audienceChild,'PUT',{version:audienceChanged.body.record.version,answers:audienceChanged.body.record.answers,reviewMonths:6,action:'review'});assert.equal(audienceReviewed.body.snapshots.length,2);
+  assert.equal((await request(other.cookie,audienceParent)).status,403);
   const invite=await request(cookie,'company-invitations','POST',{email:'restricted@strategy.test'}),restricted=await register('restricted@strategy.test',{invite:invite.body.code});
   await request(cookie,base+'/members/'+restricted.body.user.id,'PUT',{role:'member',accessScope:'selected',unitIds:[a.id]});
   assert.equal((await request(restricted.cookie,child)).status,200);
   assert.equal((await request(restricted.cookie,contextChild)).status,200);
   assert.equal((await request(restricted.cookie,contextParent)).status,403);
+  assert.equal((await request(restricted.cookie,audienceChild)).status,200);
+  assert.equal((await request(restricted.cookie,audienceParent)).status,403);
   assert.equal((await request(restricted.cookie,contextChild+'/copy','POST',{version:contextReviewed.body.record.version})).status,403);
   assert.equal((await request(restricted.cookie,parent)).status,403);
   assert.equal((await request(restricted.cookie,`strategies/${org}/${b.id}`)).status,403);
@@ -63,8 +79,9 @@ test('company Foundations autosave, conflict protection, independent copies, sna
   assert.equal((await request(restricted.cookie,child+'/copy','POST',{version:reviewed.body.record.version})).status,403);
   const next=new Date(complete.body.record.nextReviewDate+'T13:00:00Z');api.runStrategyReviews(next);api.runStrategyReviews(next);
   const tasks=(await request(cookie,base+'/data/task')).body.records.filter(task=>task.strategyLink),events=(await request(cookie,base+'/data/event')).body.records.filter(event=>event.strategyLink);
-  assert.equal(tasks.length,4);assert.equal(events.length,4);assert.ok(tasks.every(task=>task.plannedDate===strategyDay(next)));assert.ok(events.every(event=>event.calendarEvent&&event.allDay));assert.ok(tasks.some(task=>task.unitIds.includes(a.id)));
+  assert.equal(tasks.length,6);assert.equal(events.length,6);assert.ok(tasks.every(task=>task.plannedDate===strategyDay(next)));assert.ok(events.every(event=>event.calendarEvent&&event.allDay));assert.ok(tasks.some(task=>task.unitIds.includes(a.id)));
   assert.equal(tasks.filter(task=>task.strategyLink.endsWith('strategyModule=context')).length,2);
+  assert.equal(tasks.filter(task=>task.strategyLink.endsWith('strategyModule=audience')).length,2);
   assert.ok(tasks.every(task=>safeStrategyLink(task.strategyLink)));
   assert.equal(safeStrategyLink('/?strategyOrg=a&strategyEntity=b&strategyModule=unsupported'),false);
   assert.equal((await request(restricted.cookie,'settings/'+base+'/leave','POST',{currentPassword:'Strategy tests password 2026',confirmation:'Strategy organisation'})).status,200);

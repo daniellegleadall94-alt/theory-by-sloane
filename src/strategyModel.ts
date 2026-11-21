@@ -24,16 +24,33 @@ export const contextQuestions=[
  {key:'revenue',label:'Revenue priorities',helper:'Explain where growth should come from. Include priority products, customers or markets and any commercial constraints.',example:'Grow repeat orders from existing merchants and increase adoption of our premium range. Protect margin rather than competing on price alone.'},
  {key:'goals',label:'Business goals marketing must support',helper:'Describe the business outcomes marketing should help achieve, and how you will recognise progress.',example:'Build awareness among regional specifiers, generate qualified product enquiries and help account managers win repeat orders. Agree measurable targets with Sales.'}
 ] as const;
-export type SupportedStrategyModule='foundations'|'context';
-export type StrategyAnswers=Record<string,string|string[]>;
-export const supportedStrategyModule=(key:unknown):key is SupportedStrategyModule=>key==='foundations'||key==='context';
-export const strategyQuestions=(key:SupportedStrategyModule)=>key==='context'?contextQuestions:foundationQuestions;
-export const emptyStrategyAnswers=(key:SupportedStrategyModule):StrategyAnswers=>key==='context'?{products:'',revenue:'',goals:''}:emptyFoundations();
-export const strategyFilled=(key:SupportedStrategyModule,answers:StrategyAnswers)=>strategyQuestions(key).filter(question=>Array.isArray(answers[question.key])?(answers[question.key] as string[]).length>0:typeof answers[question.key]==='string'&&!!(answers[question.key] as string).trim()).length;
+export const personaFields=[
+ {key:'name',label:'Persona name',helper:'Give this audience a memorable working name.',example:'Practical Priya',short:true},
+ {key:'segment',label:'Segment',helper:'Which part of your audience does this persona represent?',example:'Independent builders’ merchants',short:true},
+ {key:'role',label:'Role',helper:'Describe their role in the buying decision.',example:'Branch manager who recommends products and places orders',short:true},
+ {key:'painPoints',label:'Pain points',helper:'What problems, frustrations or barriers matter to them?',example:'Unreliable stock availability and technical queries that delay orders.'},
+ {key:'goals',label:'Goals',helper:'What does success look like for this person?',example:'Keep customers supplied, protect margin and build repeat business.'},
+ {key:'triggers',label:'Buying triggers',helper:'What prompts them to start looking or make a purchase?',example:'A new project, a stock shortage or a contractor asking for an alternative.'},
+ {key:'where',label:'Where they spend time',helper:'Where do they look for advice and information?',example:'Trade publications, supplier visits, merchant events and LinkedIn.'},
+ {key:'channels',label:'Preferred channels',helper:'How do they prefer to hear from a business like yours?',example:'Practical email updates, short product guides and a direct conversation.'}
+] as const;
+export type Persona={id:string}&Record<typeof personaFields[number]['key'],string>;
+export const emptyPersona=(id:string):Persona=>({id,name:'',segment:'',role:'',painPoints:'',goals:'',triggers:'',where:'',channels:''});
+export const audienceQuestions=[{key:'personas',label:'Audience personas',helper:'Build a clear picture of each audience. Add at least one persona and complete its fields; you can keep unfinished cards as drafts.',example:'A buying decision may involve a specifier, a purchaser and an end user. Give each a separate persona when their needs differ.'}] as const;
+export type SupportedStrategyModule='foundations'|'context'|'audience';
+export type StrategyAnswer=string|string[]|Persona[];
+export type StrategyAnswers=Record<string,StrategyAnswer>;
+export const strategyStarted=(answers:StrategyAnswers)=>Object.values(answers).some(value=>Array.isArray(value)?value.length>0:!!value.trim());
+export const supportedStrategyModule=(key:unknown):key is SupportedStrategyModule=>key==='foundations'||key==='context'||key==='audience';
+export const strategyQuestions=(key:SupportedStrategyModule)=>key==='audience'?audienceQuestions:key==='context'?contextQuestions:foundationQuestions;
+export const emptyStrategyAnswers=(key:SupportedStrategyModule):StrategyAnswers=>key==='audience'?{personas:[]}:key==='context'?{products:'',revenue:'',goals:''}:emptyFoundations();
+export const strategyFilled=(key:SupportedStrategyModule,answers:StrategyAnswers)=>key==='audience'?(validateStrategyAnswers(key,answers)&&(answers.personas as Persona[]).length>0&&(answers.personas as Persona[]).every(persona=>personaFields.every(field=>persona[field.key].trim()))?1:0):strategyQuestions(key).filter(question=>Array.isArray(answers[question.key])?(answers[question.key] as string[]).length>0:typeof answers[question.key]==='string'&&!!(answers[question.key] as string).trim()).length;
+export const strategyAnswerText=(value:StrategyAnswer|undefined):string=>typeof value==='string'?value:!value?'':value.map(item=>typeof item==='string'?item:personaFields.map(field=>field.label+': '+(item[field.key]||'Not answered')).join('\n')).join(typeof value[0]==='string'?', ':'\n\n');
 export function validateStrategyAnswers(key:SupportedStrategyModule,value:unknown):value is StrategyAnswers{
  if(key==='foundations')return validateFoundations(value);
  if(!value||typeof value!=='object'||Array.isArray(value))return false;
  const answers=value as StrategyAnswers;
+ if(key==='audience')return Object.keys(answers).length===1&&Array.isArray(answers.personas)&&answers.personas.length<=30&&new Set(answers.personas.map(persona=>typeof persona==='object'&&persona?.id)).size===answers.personas.length&&answers.personas.every(persona=>!!persona&&typeof persona==='object'&&!Array.isArray(persona)&&Object.keys(persona).length===personaFields.length+1&&typeof persona.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(persona.id)&&personaFields.every(field=>typeof persona[field.key]==='string'&&persona[field.key].length<=('short' in field?200:3000)));
  return Object.keys(answers).length===contextQuestions.length&&contextQuestions.every(({key})=>typeof answers[key]==='string'&&(answers[key] as string).length<=6000);
 }
 export const foundationFilled=(answers:Foundations)=>foundationQuestions.filter(question=>question.key==='values'?answers.values.length>0:!!answers[question.key].trim()).length;
@@ -46,4 +63,4 @@ export function nextStrategyReview(day:string,months:number){const source=new Da
 export type FoundationRecord={id:string;title:string;strategyBuilder:true;moduleKey:SupportedStrategyModule;entityId:string;answers:StrategyAnswers;reviewMonths:number;status:'Not started'|'In progress'|'Complete';version:number;updatedAt:string;completedAt?:string;reviewedAt?:string;nextReviewDate?:string;copiedFrom?:{id:string;version:number};unitIds:string[];reviewTaskId?:string;reviewEventId?:string};
 export type StrategySnapshot={version:number;reason:string;at:string;answers:StrategyAnswers;reviewMonths:number};
 export const moduleStatus=(record:FoundationRecord|null,today:string)=>!record?'Not started':record.status==='Complete'&&record.nextReviewDate&&record.nextReviewDate<=today?'Needs review':record.status;
-export const safeStrategyLink=(value:unknown):value is string=>typeof value==='string'&&/^\/\?strategyOrg=[a-zA-Z0-9-]+&strategyEntity=[a-zA-Z0-9-]+&strategyModule=(foundations|context)$/.test(value);
+export const safeStrategyLink=(value:unknown):value is string=>typeof value==='string'&&/^\/\?strategyOrg=[a-zA-Z0-9-]+&strategyEntity=[a-zA-Z0-9-]+&strategyModule=(foundations|context|audience)$/.test(value);
