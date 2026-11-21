@@ -10,11 +10,11 @@ type Props=WorkNavigationProps&{filter:string;setFilter:(name:string)=>void;clos
 export function WorkNavigation(p:Props){
  const {workspaceKey,user}=useCompany();const context=useWorkspace();const [search,setSearch]=React.useState('');
  const [folded,setFolded]=React.useState<string[]>([]);
- const today=new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'});
- const open=p.workTasks.filter(t=>!t.done);const currentFilter=p.filter==='All tasks'?'All Tasks':p.filter==='Today'?'My Day':p.filter==='Upcoming'?'Planned':p.filter;
+
+ const open=p.workTasks.filter(t=>!t.done);const currentFilter=p.filter==='All tasks'?'All Tasks':['Today','My Day','Upcoming'].includes(p.filter)?'Planned':p.filter;
  const count=(id:string)=>open.filter(t=>id==='ungrouped'?!t.groupId:t.groupId===id||p.workGroups.some(g=>g.parentId===id&&t.groupId===g.id)).length;
  const select=(id:string)=>{p.selectWorkGroup(id);p.setFilter('All Tasks');p.close()};
- const views=[{name:'My Day',icon:CalendarDays,count:open.filter(t=>t.plannedDate===today||t.myDayUserIds?.[user?.id||'guest']===today||t.myDay===today||t.due&&t.due<=today).length},{name:'Important',icon:Clock,count:open.filter(t=>t.important).length},{name:'Planned',icon:CalendarDays,count:open.filter(t=>t.due||t.plannedDate).length},{name:'Assigned to Me',icon:ListTodo,count:context.myTasks.filter(t=>!t.archived&&!t.done&&t.ownerId!==user?.id).length},{name:'All Tasks',icon:ListTodo,count:open.length},{name:'Completed',icon:CheckCheck,count:p.workTasks.filter(t=>t.done).length},{name:'My Week',icon:CalendarDays,count:open.filter(t=>t.plannedDate).length}];
+ const views=[{name:'Planned',icon:CalendarDays,count:open.filter(t=>t.due||t.plannedDate).length},{name:'Important',icon:Clock,count:open.filter(t=>t.important).length},{name:'Assigned to Me',icon:ListTodo,count:context.myTasks.filter(t=>!t.archived&&!t.done&&t.ownerId!==user?.id).length},{name:'All Tasks',icon:ListTodo,count:open.length},{name:'Completed',icon:CheckCheck,count:p.workTasks.filter(t=>t.done).length},{name:'My Week',icon:CalendarDays,count:open.filter(t=>t.plannedDate).length}];
  const manage=(id:string)=>window.dispatchEvent(new CustomEvent('theory:planner-manage-list',{detail:{id}}));
  const drop=(e:React.DragEvent,target:WorkGroup)=>{e.preventDefault();const id=e.dataTransfer.getData('application/theory-list');if(!id||id===target.id)return;const groups=readWorkspace<WorkGroup[]>(workspaceKey,'theory.workGroups.v1',[]),moving=groups.find(g=>g.id===id);if(!moving||groups.some(g=>g.parentId===moving.id)&&target.parentId)return;publishWorkspace(workspaceKey,'theory.workGroups.v1',groups.map(g=>g.id===id?{...g,parentId:target.parentId,order:(target.order||0)-.5}:g))};
 
