@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,readFileSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
+import {initialiseBackupKey,createBackup,restoreBackup} from '../server/backup.mjs';
+test('encrypted backup restores live WAL data and rejects tampering, wrong keys and overwrite',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'theory-backup-test-')),databasePath=join(root,'source.sqlite'),keyFile=join(root,'recovery.key');
+ const db=new DatabaseSync(databasePath);db.exec("PRAGMA journal_mode=WAL; CREATE TABLE tasks(id INTEGER PRIMARY KEY,title TEXT); INSERT INTO tasks VALUES(1,'private test task')");
+ initialiseBackupKey(keyFile);
+ const result=await createBackup({databasePath,keyFile,destination:join(root,'archives'),retentionDays:30});
+ assert.equal(result.verified,true);assert.equal(readFileSync(result.file).includes(Buffer.from('private test task')),false);
+ const destination=join(root,'restored');await restoreBackup({archive:result.file,keyFile,destination});
+ const restored=new DatabaseSync(join(destination,'theory.sqlite'));assert.equal(restored.prepare('SELECT title FROM tasks').get().title,'private test task');restored.close();
+ await assert.rejects(restoreBackup({archive:result.file,keyFile,destination}),/never overwritten/);
+ const wrong=join(root,'wrong.key');initialiseBackupKey(wrong);await assert.rejects(restoreBackup({archive:result.file,keyFile:wrong,destination:join(root,'bad')}),/authentication failed/);
+ const bytes=readFileSync(result.file);bytes[bytes.length-1]^=1;const tampered=join(root,'tampered');writeFileSync(tampered,bytes);
+ await assert.rejects(restoreBackup({archive:tampered,keyFile,destination:join(root,'bad')}),/authentication failed/);db.close();
+});
