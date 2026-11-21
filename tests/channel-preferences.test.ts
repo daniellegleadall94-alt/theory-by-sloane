@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {marketingChannelNames,selectedChannels,channelVisible} from '../src/channelPreferences.ts';
+assert.equal(marketingChannelNames.length,55);
+assert.equal(new Set(marketingChannelNames).size,55);
+assert.equal(selectedChannels(''),null);
+assert.deepEqual(selectedChannels('[]'),[]);
+assert.equal(channelVisible('Email Marketing',''),true);
+assert.equal(channelVisible('Email Marketing','[]'),false);
+assert.deepEqual(selectedChannels('["Email Marketing","Email Marketing"]'),['Email Marketing']);
+assert.equal(channelVisible('Email Marketing','["Email Marketing"]'),true);
+assert.equal(channelVisible('Website Management','["Email Marketing"]'),false);
+assert.equal(selectedChannels('["Unknown"]'),null);
+console.log('Marketing channel visibility defaults, selections and validation passed.');

@@ -1,0 +1,15 @@
+export const marketingChannelGroups=[
+ {name:'Strategy, Planning & Operations',description:'Set the direction. Build the foundations that make good marketing possible.',items:['Marketing Strategy','Marketing Planning','Campaign Management','Budget Management','Marketing Operations','MarTech','Agency & Supplier Management']},
+ {name:'Insight, Research & Intelligence',description:'Understand your market, your customers and the opportunities ahead.',items:['Market Research','Competitor Analysis','Customer Insight','Audience Segmentation','Buyer Personas','Customer Journey Mapping','Marketing Analytics']},
+ {name:'Brand & Communications',description:'Shape how your brand looks, sounds and connects with the world.',items:['Brand Management','Content Marketing','Public Relations','Internal Communications','Corporate Communications','Reputation Management','Employer Branding']},
+ {name:'Digital & Acquisition',description:'Turn digital discovery into meaningful demand and conversion.',items:['Website Management','SEO & AI Search Visibility','Paid Advertising','Conversion Rate Optimisation','Lead Generation']},
+ {name:'CRM & Customer Marketing',description:'Build better relationships, from the first hello to lasting loyalty.',items:['CRM & Database Management','Email Marketing','Marketing Automation','Lead Nurturing','Customer Retention','Loyalty & Advocacy']},
+ {name:'Social & Community',description:'Create conversations, nurture your community and grow your presence.',items:['Organic Social Media','Community Management','Social Listening','Influencer & Creator Marketing']},
+ {name:'Commercial & Product Marketing',description:'Connect your product, your proposition and your commercial ambitions.',items:['Product Marketing','Go-to-Market','Sales Enablement','Account-Based Marketing','Pricing & Commercial Propositions']},
+ {name:'Partnerships & Relationships',description:'Create shared value through the people and organisations around you.',items:['Partnership Marketing','Sponsorships','Memberships & Associations','Key Account Marketing','Customer Advocacy']},
+ {name:'Events & Experiences',description:'Bring your brand to life through moments that matter.',items:['Events & Exhibitions','Webinars','Virtual Events','Customer Experiences','Corporate Events']},
+ {name:'Governance & Performance',description:'Measure what matters, improve your work and keep it accountable.',items:['Marketing Reporting','Testing & Experimentation','Marketing Governance','Compliance & Risk']}
+];
+export const marketingChannelNames=marketingChannelGroups.flatMap(group=>group.items);
+export function selectedChannels(value:string):string[]|null {try{const parsed:unknown=JSON.parse(value);return Array.isArray(parsed)&&parsed.every(name=>typeof name==='string'&&marketingChannelNames.includes(name))?[...new Set(parsed)]:null}catch{return null}}
+export const channelVisible=(name:string,value:string)=>{const selected=selectedChannels(value);return selected===null||selected.includes(name)};

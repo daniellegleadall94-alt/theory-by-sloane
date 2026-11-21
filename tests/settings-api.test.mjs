@@ -20,6 +20,14 @@ test('settings persist, isolate accounts and organisations, protect security ope
   assert.equal((await request(owner.cookie,'settings/profile','PUT',{displayName:'Test',timeZone:'Invalid/Zone'})).status,400);
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{appearance:'dark',density:'compact',landingPage:'Marketing Overview',plannerView:'Board'})).status,200);assert.equal((await request(owner.cookie,'settings/account')).body.preferences.appearance,'dark');assert.deepEqual((await request(outsider.cookie,'settings/account')).body.preferences,{});
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{appearance:'invalid'})).status,400);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{visibleMarketingChannels:JSON.stringify(['Email Marketing','Website Management'])})).status,200);
+  assert.deepEqual(JSON.parse((await request(owner.cookie,'settings/account')).body.preferences.visibleMarketingChannels),['Email Marketing','Website Management']);
+  assert.equal((await request(outsider.cookie,'settings/account')).body.preferences.visibleMarketingChannels,undefined);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{visibleMarketingChannels:'["Unknown channel"]'})).status,400);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{visibleMarketingChannels:'[]'})).status,200);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{density:'compact'})).status,200);
+  assert.equal((await request(owner.cookie,'settings/account')).body.preferences.visibleMarketingChannels,'[]');
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{visibleMarketingChannels:''})).status,200);
   const pins=JSON.stringify(['My Calendar','Budget & Resources','Budget & Resources']);
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationFavourites:pins})).status,200);
   assert.deepEqual(JSON.parse((await request(owner.cookie,'settings/account')).body.preferences.navigationFavourites),['My Calendar','Budget & Resources']);
