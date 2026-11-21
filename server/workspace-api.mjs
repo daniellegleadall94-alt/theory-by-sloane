@@ -1,7 +1,7 @@
 import {validObjective} from '../src/objectiveModel.ts';
 import {completionCycle,parentCycle,blockers} from '../src/workManagement.ts';
 import {validateAccount} from './account-register.mjs';
-import {completeTask,nextOccurrence,validTaskDate} from '../src/work.ts';
+import {completeTask,nextOccurrence,validTaskDate,reminderInstant} from '../src/work.ts';
 import {randomUUID} from 'node:crypto';
 import {validateCalendarEvent,splitCalendarSeries} from '../src/calendarModel.ts';
 
@@ -96,6 +96,7 @@ export function createWorkspaceLayer(db){
   if(kind==='template'){if(!data.blueprint||typeof data.blueprint!=='object'||Array.isArray(data.blueprint)||JSON.stringify(data.blueprint).length>20000||Object.keys(data.blueprint).some(k=>!['title','description','priority','discipline','channel','effortHours','customFields','checklist'].includes(k)))fail(400,'Choose valid template fields.');validateData({...data.blueprint,title:data.blueprint.title||data.title,due:'',unitIds:data.unitIds||[],assigneeIds:[userId],done:false},'task',org,userId,null);}
   if(kind==='view'){if(!data.config||typeof data.config!=='object'||Array.isArray(data.config)||JSON.stringify(data.config).length>10000||['query','sort','view','selection'].some(k=>data.config[k]!==undefined&&typeof data.config[k]!=='string')||data.config.reverse!==undefined&&typeof data.config.reverse!=='boolean'||data.config.filters!==undefined&&(!data.config.filters||typeof data.config.filters!=='object'||Array.isArray(data.config.filters)||Object.values(data.config.filters).some(v=>typeof v!=='string')))fail(400,'Choose valid view settings.');}
   if(kind==='task'){
+   if(data.calendarTime){const t=data.calendarTime;if(typeof t!=='object'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(t.start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(t.end)||typeof t.timeZone!=='string')fail(400,'Choose valid task calendar times.');try{if(reminderInstant((data.start||data.due)+'T'+t.start,t.timeZone)>=reminderInstant(data.due+'T'+t.end,t.timeZone))throw Error();}catch{fail(400,'Task calendar times must be valid and end after the start.');}}
    if(data.done&&existing&&!JSON.parse(existing.data).done&&one("SELECT name FROM sqlite_master WHERE name='workflow_approvals'")){const stages=new Map();for(const approval of all('SELECT stage,status,source_version FROM workflow_approvals WHERE record_key=? ORDER BY created_at,rowid',existing.record_key))stages.set(approval.stage,approval);if([...stages.values()].some(a=>a.status!=='Granted'||a.source_version!==existing.version))fail(409,'Grant each named approval for the current saved task version before completing it.');}
    if(data.description!==undefined&&(typeof data.description!=='string'||data.description.length>10000))fail(400,'Use a description up to 10,000 characters.');
    if(data.checklist!==undefined&&(!Array.isArray(data.checklist)||data.checklist.length>200||data.checklist.some(c=>!c||typeof c.id!=='string'||typeof c.title!=='string'||!c.title.trim()||c.title.length>180||typeof c.done!=='boolean')))fail(400,'Check the task checklist.');
@@ -232,5 +233,5 @@ export function createWorkspaceLayer(db){
   if(path.startsWith('/api/organisations')||path.startsWith('/api/personal/')||path==='/api/my-work')fail(404,'Workspace endpoint not found.');
   return false;
  }
- return {handle,result,save,setWorkflowSink:listener=>{workflowSink=listener},notificationReady:deliveryReady,transaction,validateData,permittedRows,canRead,canWrite,canUnits,validateUnits,authorisedUnits,member,assertWritable,runReminders,startReminders,close:()=>clearInterval(reminderTimer)};
+ return {handle,result,save,deleteRecord:(userId,row)=>{if(!canWrite(userId,row))fail(403,'You cannot delete this item.');if(row.organisation_id)assertWritable(row.organisation_id);if(row.kind==='task')assertUnreferenced(row.scope,row.external_id);run('DELETE FROM workspace_records WHERE record_key=?',row.record_key)},setWorkflowSink:listener=>{workflowSink=listener},notificationReady:deliveryReady,transaction,validateData,permittedRows,canRead,canWrite,canUnits,validateUnits,authorisedUnits,member,assertWritable,runReminders,startReminders,close:()=>clearInterval(reminderTimer)};
 }

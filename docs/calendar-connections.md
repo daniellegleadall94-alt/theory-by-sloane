@@ -42,6 +42,16 @@ Tables: `calendar_accounts`, `calendar_oauth_flows`, `external_calendars`, `exte
 
 `tests/calendar-connections.test.mjs` uses mock provider responses to check Outlook and Google consent callbacks, state replay and browser binding, multiple accounts, encrypted token storage, colleague isolation, calendar selection, cached refresh, token rotation/revocation, unsafe paging/link rejection and disconnect preserving native tasks. Live provider acceptance testing requires configured app registrations and the user's sign-in/consent; it has not been performed without those credentials.
 
-Full two-way task/event publishing, provider change subscriptions and organiser meeting editing from Theory remain separate work. There is no claim that this read-only import implementation provides those features.
+## Optional two-way sync (initial release)
+
+Accounts connect read-only by default. Enable calendar editing requests Calendars.ReadWrite (Microsoft) or calendar (Google). The separate Theory sync control requires explicit confirmation before copying owned/assigned, editable dated tasks and native events to that external account. It creates a Theory calendar or uses a deliberately selected existing calendar. Imported meetings remain private; a selected sync calendar is excluded from meeting imports to avoid displaying each task twice.
+
+Persistent calendar_sync_settings/calendar_sync_links mappings retain task or event record keys, external IDs, versions, hashes and deletion state. A one-minute worker runs while the Theory server is running. Google uses incremental sync tokens with full recovery on 410. Outlook uses stable custom-calendar event listing and individual event verification; the documented v1.0 calendarView delta endpoint targets the primary calendar, so no unsupported custom-calendar delta route is assumed. Change subscriptions and renewal are still outstanding and need a public HTTPS callback.
+
+Non-recurring items sync title, descriptions, dates/times, all-day boundaries and completion tick prefixes. New external events without invitees become private Unsorted tasks. Timed imports retain Europe/London wall times, including daylight-saving conversion. Existing canonical workspace permission and validation checks apply to all incoming changes. Remote attendee-bearing items require the separate organiser editor, which checks current attendees and provider versions before sending updates.
+
+Provider create IDs/transaction IDs and persisted mappings prevent ordinary retries from creating duplicate events. Conflicts compare edit timestamps; overwritten data is retained in calendar_sync_history and task activity identifies the decision. Deletion in either system waits for an explicit Theory confirmation; the retained copy can be kept instead. Disconnect removes mappings and tokens while preserving native tasks/events and the external calendar.
+
+**Remaining:** recurring masters/instances and future-series edits; provider push subscriptions/renewal; live OAuth acceptance. These limitations are shown in the sync control. This is not yet the complete calendar acceptance brief.
 
 Provider references: [Microsoft calendarView](https://learn.microsoft.com/en-us/graph/api/calendar-list-calendarview?view=graph-rest-1.0), [Google OAuth web server flow](https://developers.google.com/identity/protocols/oauth2/web-server), [Google Calendar scopes](https://developers.google.com/workspace/calendar/api/auth), [Google event listing](https://developers.google.com/workspace/calendar/api/v3/reference/events/list).
