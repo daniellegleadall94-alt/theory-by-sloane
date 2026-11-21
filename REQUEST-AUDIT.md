@@ -66,6 +66,6 @@ Audited 21 November 2026 against the conversation, the eight supplied developmen
 ## Execution log
 
 - 21 November: audited source and delivery notes; recorded previously undisclosed partial delivery and superseded wording. Completed items 1 and 2 sequentially.
-- Incoming fixes, queued after item 2 and before Audience: restore palette access in local/guest Appearance; investigate repeated browser saved-password suggestions during navigation. Keep subsequent requests queued until the active item is checked and saved.
+- Incoming palette fix complete: Appearance now works in a local/guest workspace, with device-only persistence clearly labelled; palette choices and Save verified in the browser and build passed. Next: investigate repeated browser saved-password suggestions during navigation, then Audience. Keep subsequent requests queued until the active item is checked and saved.
 
 Each item is only marked complete after relevant validation. Later requests to remove controls take precedence over earlier requests to add them. This queue records the work; it does not install a timed automation or promise background execution while Codex is closed.
