@@ -19,6 +19,23 @@ export const foundationQuestions=[
 ] as const;
 export type Foundations={mission:string;vision:string;values:string[];brandPromise:string;why:string};
 export const emptyFoundations=():Foundations=>({mission:'',vision:'',values:[],brandPromise:'',why:''});
+export const contextQuestions=[
+ {key:'products',label:'Products and services',helper:'Describe what you sell, who it serves and the products or services that matter most.',example:'We supply durable clay drainage systems to builders and merchants, supported by technical advice and reliable delivery.'},
+ {key:'revenue',label:'Revenue priorities',helper:'Explain where growth should come from. Include priority products, customers or markets and any commercial constraints.',example:'Grow repeat orders from existing merchants and increase adoption of our premium range. Protect margin rather than competing on price alone.'},
+ {key:'goals',label:'Business goals marketing must support',helper:'Describe the business outcomes marketing should help achieve, and how you will recognise progress.',example:'Build awareness among regional specifiers, generate qualified product enquiries and help account managers win repeat orders. Agree measurable targets with Sales.'}
+] as const;
+export type SupportedStrategyModule='foundations'|'context';
+export type StrategyAnswers=Record<string,string|string[]>;
+export const supportedStrategyModule=(key:unknown):key is SupportedStrategyModule=>key==='foundations'||key==='context';
+export const strategyQuestions=(key:SupportedStrategyModule)=>key==='context'?contextQuestions:foundationQuestions;
+export const emptyStrategyAnswers=(key:SupportedStrategyModule):StrategyAnswers=>key==='context'?{products:'',revenue:'',goals:''}:emptyFoundations();
+export const strategyFilled=(key:SupportedStrategyModule,answers:StrategyAnswers)=>strategyQuestions(key).filter(question=>Array.isArray(answers[question.key])?(answers[question.key] as string[]).length>0:typeof answers[question.key]==='string'&&!!(answers[question.key] as string).trim()).length;
+export function validateStrategyAnswers(key:SupportedStrategyModule,value:unknown):value is StrategyAnswers{
+ if(key==='foundations')return validateFoundations(value);
+ if(!value||typeof value!=='object'||Array.isArray(value))return false;
+ const answers=value as StrategyAnswers;
+ return Object.keys(answers).length===contextQuestions.length&&contextQuestions.every(({key})=>typeof answers[key]==='string'&&(answers[key] as string).length<=6000);
+}
 export const foundationFilled=(answers:Foundations)=>foundationQuestions.filter(question=>question.key==='values'?answers.values.length>0:!!answers[question.key].trim()).length;
 export function validateFoundations(value:unknown):value is Foundations{
  if(!value||typeof value!=='object'||Array.isArray(value))return false;const answers=value as Foundations;
@@ -26,7 +43,7 @@ export function validateFoundations(value:unknown):value is Foundations{
 }
 export const strategyDay=(at=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).format(at);
 export function nextStrategyReview(day:string,months:number){const source=new Date(day+'T12:00:00Z'),target=new Date(Date.UTC(source.getUTCFullYear(),source.getUTCMonth()+months,1,12));target.setUTCDate(Math.min(source.getUTCDate(),new Date(Date.UTC(target.getUTCFullYear(),target.getUTCMonth()+1,0)).getUTCDate()));return target.toISOString().slice(0,10)}
-export type FoundationRecord={id:string;title:string;strategyBuilder:true;moduleKey:'foundations';entityId:string;answers:Foundations;reviewMonths:number;status:'Not started'|'In progress'|'Complete';version:number;updatedAt:string;completedAt?:string;reviewedAt?:string;nextReviewDate?:string;copiedFrom?:{id:string;version:number};unitIds:string[];reviewTaskId?:string;reviewEventId?:string};
-export type StrategySnapshot={version:number;reason:string;at:string;answers:Foundations;reviewMonths:number};
+export type FoundationRecord={id:string;title:string;strategyBuilder:true;moduleKey:SupportedStrategyModule;entityId:string;answers:StrategyAnswers;reviewMonths:number;status:'Not started'|'In progress'|'Complete';version:number;updatedAt:string;completedAt?:string;reviewedAt?:string;nextReviewDate?:string;copiedFrom?:{id:string;version:number};unitIds:string[];reviewTaskId?:string;reviewEventId?:string};
+export type StrategySnapshot={version:number;reason:string;at:string;answers:StrategyAnswers;reviewMonths:number};
 export const moduleStatus=(record:FoundationRecord|null,today:string)=>!record?'Not started':record.status==='Complete'&&record.nextReviewDate&&record.nextReviewDate<=today?'Needs review':record.status;
-export const safeStrategyLink=(value:unknown):value is string=>typeof value==='string'&&/^\/\?strategyOrg=[a-zA-Z0-9-]+&strategyEntity=[a-zA-Z0-9-]+&strategyModule=foundations$/.test(value);
+export const safeStrategyLink=(value:unknown):value is string=>typeof value==='string'&&/^\/\?strategyOrg=[a-zA-Z0-9-]+&strategyEntity=[a-zA-Z0-9-]+&strategyModule=(foundations|context)$/.test(value);

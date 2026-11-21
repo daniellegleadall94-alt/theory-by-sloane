@@ -36,8 +36,8 @@ Audited 21 November 2026 against the conversation, the eight supplied developmen
 
 ## Outstanding work, in order
 
-1. **Finish user-facing Marketing channels terminology.** The main menu was renamed, but settings, filters, workload, automation forms and validation still say discipline. Keep stored identifiers compatible.
-2. **Strategy Business Context.** Products/services, revenue priorities and business goals, using the same autosave, reviews, copies and snapshots as Foundations.
+1. **Complete: user-facing Marketing channels terminology.** Updated settings, filters, workload, automation forms and validation; stored identifiers remain compatible. Build passed; commit 19655e8.
+2. **Complete: Strategy Business Context.** Products/services, revenue priorities and business goals, using the same autosave, reviews, copies and snapshots as Foundations. Build, module-isolation/review tests and visual check passed.
 3. **Strategy Audience.** Repeatable persona cards and six-month review cadence.
 4. **Strategy Market & Competitors.** Competitor cards, trends and quarterly reviews.
 5. **Strategy SWOT.** Editable quadrants and accept/dismiss suggestions from previous answers.
@@ -65,6 +65,7 @@ Audited 21 November 2026 against the conversation, the eight supplied developmen
 
 ## Execution log
 
-- 21 November: audited source and delivery notes; recorded previously undisclosed partial delivery and superseded wording. Working sequentially from item 1.
+- 21 November: audited source and delivery notes; recorded previously undisclosed partial delivery and superseded wording. Completed items 1 and 2 sequentially.
+- Incoming fixes, queued after item 2 and before Audience: restore palette access in local/guest Appearance; investigate repeated browser saved-password suggestions during navigation. Keep subsequent requests queued until the active item is checked and saved.
 
 Each item is only marked complete after relevant validation. Later requests to remove controls take precedence over earlier requests to add them. This queue records the work; it does not install a timed automation or promise background execution while Codex is closed.
