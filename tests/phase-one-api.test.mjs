@@ -95,6 +95,12 @@ test('CSV/XLSX import maps, validates, previews, reports duplicates and errors, 
   const repeatedContacts=await upload('contacts-again.csv','Name,Email,Company,Type\nStudio,studio@example.com,Studio Ltd,Supplier');
   assert.equal((await request(cookie,'imports/'+repeatedContacts.body.id+'/preview','POST',contactConfig)).body.duplicates,1);
   await request(cookie,'imports/'+repeatedContacts.body.id,'DELETE');
+  const projects=await upload('projects.csv','Name,Start,End,Status,Category\nNew launch,01/11/2026,30/11/2026,In progress,Product launch\nBad dates,30/11/2026,01/11/2026,Planning,Project\nNew launch,01/11/2026,30/11/2026,In progress,Product launch');
+  const projectConfig={recordKind:'campaign',organisationId:org,unitIds:[brand.id],dateFormat:'DMY',mapping:{title:0,start:1,end:2,status:3,category:4}};
+  const projectPreview=await request(cookie,'imports/'+projects.body.id+'/preview','POST',projectConfig);assert.equal(projectPreview.status,200,JSON.stringify(projectPreview.body));assert.equal(projectPreview.body.valid,1);assert.equal(projectPreview.body.errors,1);assert.equal(projectPreview.body.duplicates,1);
+  assert.equal((await request(other.cookie,'imports/'+projects.body.id+'/apply','POST',{confirm:true,confirmValidOnly:true})).status,404);
+  assert.equal((await request(cookie,'imports/'+projects.body.id+'/apply','POST',{confirm:true,confirmValidOnly:true})).body.imported,1);
+  const importedProject=(await request(cookie,root+'/data/campaign')).body.records.find(r=>r.name==='New launch');assert.equal(importedProject.end,'2026-11-30');assert.equal(importedProject.budget,0);assert.deepEqual(importedProject.unitIds,[brand.id]);
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Work');sheet.addRow(['Task','Due','Hours']);sheet.addRow(['Excel task',new Date('2026-11-09T00:00:00Z'),2]);sheet.getCell('B2').numFmt='yyyy-mm-dd';sheet.addRow(['Formula date',{formula:'TODAY()'},1]);
   const xlsx=await upload('work.xlsx',await book.xlsx.writeBuffer());assert.equal(xlsx.status,201,JSON.stringify(xlsx.body));assert.equal(xlsx.body.sheets[0].rows[0][1],'2026-11-09');
   preview=await request(cookie,`imports/${xlsx.body.id}/preview`,'POST',{organisationId:org,unitIds:[brand.id],mapping:{title:0,due:1,effortHours:2}});assert.equal(preview.body.valid,1);assert.equal(preview.body.errors,1);

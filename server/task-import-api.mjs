@@ -9,6 +9,8 @@ export function importDate(value,format){
  if(match&&['DMY','MDY'].includes(format)){const result=`${match[3]}-${(format==='DMY'?match[2]:match[1]).padStart(2,'0')}-${(format==='DMY'?match[1]:match[2]).padStart(2,'0')}`;if(validTaskDate(result))return result;}
  throw Error('Use a valid date matching the selected format.');
 }
+const campaignFields=['title','description','owner','status','category','start','end'];
+const campaignFingerprint=c=>JSON.stringify([(c.name||c.title||'').trim().toLowerCase(),c.start||'',c.end||'',(c.unitIds||[]).slice().sort()]);
 const contactFields=['title','description','contactType','companyName','jobTitle','email','phone','website'];
 const contactFingerprint=c=>JSON.stringify([c.title.trim().toLowerCase(),c.email.toLowerCase(),c.companyName.trim().toLowerCase()]);
 const fingerprint=t=>JSON.stringify([t.title.trim().toLowerCase(),t.campaign||'',t.due||'',t.accountableOwnerId||t.assigneeIds?.[0]||'']);
@@ -19,7 +21,7 @@ export function createTaskImportLayer(db,workspace){
  const parse=upload=>new Promise((resolve,reject)=>{const worker=new Worker(new URL('./import-parser.mjs',import.meta.url),{workerData:upload,resourceLimits:{maxOldGenerationSizeMb:192}}),timer=setTimeout(()=>{void worker.terminate();reject(Error('Parsing timed out. Use a smaller file.'))},15000);worker.once('message',data=>{clearTimeout(timer);void worker.terminate();data.error?reject(Error(data.error)):resolve(data.result)});worker.once('error',e=>{clearTimeout(timer);reject(e)});worker.once('exit',code=>{clearTimeout(timer);if(code!==0)reject(Error('The workbook could not be processed within the size limit.'))})});
  const scope=(user,org)=>org?'org:'+org:'user:'+user;
  const snapshot=(user,org)=>createHash('sha256').update(JSON.stringify(all("SELECT record_key,version FROM workspace_records WHERE scope=? ORDER BY record_key",scope(user,org)))).digest('hex');
- const authorise=(user,org)=>{if(org){const m=workspace.member(user,org);if(!m||!['owner','admin','manager','member'].includes(m.role))fail(403,'Your role cannot import tasks here.');workspace.assertWritable(org)}};
+ const authorise=(user,org)=>{if(org){const m=workspace.member(user,org);if(!m||!['owner','admin','manager','member'].includes(m.role))fail(403,'Your role cannot import records here.');workspace.assertWritable(org)}};
  async function handle({req,path,user,bodyOf,send}){
   if(!path.startsWith('/api/imports/'))return false;
   run('DELETE FROM import_jobs WHERE expires_at<?',new Date().toISOString());
@@ -30,7 +32,7 @@ export function createTaskImportLayer(db,workspace){
   const match=path.match(/^\/api\/imports\/([^/]+)\/(preview|apply)$/);if(!match||req.method!=='POST')fail(404,'Import endpoint not found.');
   const row=one('SELECT * FROM import_jobs WHERE id=? AND user_id=?',match[1],user.id);if(!row)fail(404,'Import expired or was not found.');const job=JSON.parse(row.data),body=await bodyOf(req);if(job.completed)fail(409,'This import has already finished.');
   if(match[2]==='preview'){
-   const recordKind=body.recordKind||'task';if(!['task','contact'].includes(recordKind))fail(400,'Choose tasks or contacts.');const fields=recordKind==='contact'?contactFields:importFields,keyOf=recordKind==='contact'?contactFingerprint:fingerprint;
+   const recordKind=body.recordKind||'task';if(!['task','contact','campaign'].includes(recordKind))fail(400,'Choose tasks, contacts or campaigns/projects.');const fields=recordKind==='contact'?contactFields:recordKind==='campaign'?campaignFields:importFields,keyOf=recordKind==='contact'?contactFingerprint:recordKind==='campaign'?campaignFingerprint:fingerprint;
    const org=body.organisationId||null;if(org!==null&&typeof org!=='string')fail(400,'Choose a valid organisation.');authorise(user.id,org);const sheet=job.sheets[body.sheet||0];if(!sheet)fail(400,'Choose a worksheet.');
    if(!body.mapping||Object.keys(body.mapping).some(k=>!fields.includes(k))||Object.values(body.mapping).some(i=>!Number.isInteger(i)||i<0||i>=sheet.headers.length)||!Number.isInteger(body.mapping.title))fail(400,'Map the name and valid columns.');
    const units=workspace.validateUnits(user.id,org,body.unitIds||[]);if(org&&workspace.authorisedUnits(user.id,org,false).length&&!units.length&&body.confirmOrganisationWide!==true)fail(400,'Choose companies or confirm organisation-wide records.');
@@ -44,6 +46,13 @@ export function createTaskImportLayer(db,workspace){
       task={id:task.id,contactDirectory:true,title:valuesFor('title'),description:valuesFor('description'),contactType:valuesFor('contactType')||'Contact',companyName:valuesFor('companyName'),jobTitle:valuesFor('jobTitle'),email:valuesFor('email'),phone:valuesFor('phone'),website:valuesFor('website'),status:'Active',unitIds:units};
       workspace.validateData(task,'contact',org,user.id,null);const key=keyOf(task),duplicate=existing.has(key)||seen.has(key);seen.add(key);return {row:sheet.rowNumbers?.[i]||i+2,task,duplicate,error:''};
      }
+     if(recordKind==='campaign'){
+      const status=valuesFor('status')||'Planning',canonical=['Planning','In progress','Launched','Completed'].find(v=>v.toLowerCase()===status.toLowerCase());if(!canonical)throw Error('Campaign status must be Planning, In progress, Launched or Completed.');
+      const owner=valuesFor('owner'),matches=owner?members.filter(m=>[m.id,m.email,m.name].some(v=>v?.toLowerCase()===owner.toLowerCase())):[user];if(matches.length!==1)throw Error('Owner must uniquely match a member in this workspace.');
+      const start=importDate(valuesFor('start'),body.dateFormat||'ISO'),end=importDate(valuesFor('end'),body.dateFormat||'ISO');if(!end)throw Error('Provide an end date.');if(start&&start>end)throw Error('Start must be on or before the end date.');
+      task={id:task.id,name:valuesFor('title'),title:valuesFor('title'),description:valuesFor('description'),category:valuesFor('category')||'Marketing project',status:canonical,start,end,budget:0,colour:'sage',initials:valuesFor('title').slice(0,2).toUpperCase(),unitIds:units,assigneeIds:[matches[0].id]};
+      if(task.category.length>180)throw Error('Use a category up to 180 characters.');workspace.validateData(task,'campaign',org,user.id,null);const key=keyOf(task),duplicate=existing.has(key)||seen.has(key);seen.add(key);return {row:sheet.rowNumbers?.[i]||i+2,task,duplicate,error:''};
+     }
      for(const field of ['start','plannedDate','due','publicationDate']){const value=valuesFor(field);if(value)task[field]=importDate(value,body.dateFormat||'ISO');}
      const owner=valuesFor('owner');if(owner){const matches=members.filter(m=>[m.id,m.email,m.name].some(v=>v?.toLowerCase()===owner.toLowerCase()));if(matches.length!==1)throw Error('Owner must uniquely match a member name, email or ID in this workspace.');task.accountableOwnerId=matches[0].id;task.assigneeIds=[matches[0].id]}
      const campaign=valuesFor('campaign');if(campaign){const matches=campaigns.filter(c=>c.id===campaign||c.name?.toLowerCase()===campaign.toLowerCase());if(matches.length!==1)throw Error('Campaign must uniquely match an accessible campaign in this workspace.');task.campaign=matches[0].id}
@@ -56,7 +65,7 @@ export function createTaskImportLayer(db,workspace){
     }catch(e){return {row:sheet.rowNumbers?.[i]||i+2,task,error:e.message,duplicate:false}}
    });
    job.preview={org,recordKind,records,snapshot:snapshot(user.id,org),allowDuplicates:body.allowDuplicates===true};run('UPDATE import_jobs SET data=? WHERE id=?',JSON.stringify(job),row.id);
-   return send(200,{records:records.map(r=>({row:r.row,title:r.task.title,owner:members.find(m=>m.id===r.task.accountableOwnerId)?.name||'',due:r.task.due,plannedDate:r.task.plannedDate,duplicate:r.duplicate,error:r.error})),valid:records.filter(r=>!r.error&&(!r.duplicate||job.preview.allowDuplicates)).length,errors:records.filter(r=>r.error).length,duplicates:records.filter(r=>r.duplicate).length});
+   return send(200,{records:records.map(r=>({row:r.row,title:r.task.title,owner:members.find(m=>m.id===(r.task.accountableOwnerId||r.task.assigneeIds?.[0]))?.name||'',due:r.task.end||r.task.due,plannedDate:recordKind==='campaign'?r.task.start:r.task.plannedDate,duplicate:r.duplicate,error:r.error})),valid:records.filter(r=>!r.error&&(!r.duplicate||job.preview.allowDuplicates)).length,errors:records.filter(r=>r.error).length,duplicates:records.filter(r=>r.duplicate).length});
   }
   if(!job.preview)fail(400,'Preview this import first.');if(body.confirm!==true)fail(400,'Confirm the import.');const preview=job.preview;authorise(user.id,preview.org);
   if(preview.records.some(r=>r.error)&&body.confirmValidOnly!==true)fail(400,'Fix validation errors or explicitly import valid rows only.');
