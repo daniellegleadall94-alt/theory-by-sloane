@@ -49,7 +49,9 @@ for(const provider of ['microsoft','google'])test(provider+' two-way mapping, im
    if(method==='GET')return Response.json(google?{items:[...events.values()],nextSyncToken:'cursor'}:{value:[...events.values()]});
    if(method==='POST'){creates++;const existing=[...events.values()].find(e=>google?e.id===body.id:e.transactionId===body.transactionId);if(existing)return Response.json(existing);const e=stamp(body.id||'external-'+serial,body);events.set(e.id,e);return Response.json(e)}
   }
-  const e=events.get(id);if(!e)return Response.json({error:'missing'},{status:404});
+  if(url.pathname.endsWith('/instances')){const masterId=decodeURIComponent(url.pathname.split('/').at(-2)),master=events.get(masterId),date='2026-12-08';let instance=[...events.values()].find(e=>(e.recurringEventId||e.seriesMasterId)===masterId);if(!instance){instance=stamp('instance-'+masterId,google?{...master,recurrence:undefined,recurringEventId:masterId,originalStartTime:{date},start:{date},end:{date:'2026-12-09'}}:{...master,recurrence:null,seriesMasterId:masterId,originalStart:date+'T00:00:00Z',start:{dateTime:date+'T00:00:00'},end:{dateTime:'2026-12-09T00:00:00'}});events.set(instance.id,instance)}return Response.json(google?{items:[instance]}:{value:[instance]})}
+  const e=events.get(id);if(e&&!google&&url.searchParams.has('$expand'))return Response.json({...e,exceptionOccurrences:[...events.values()].filter(x=>x.seriesMasterId===e.id).map(x=>({id:x.id}))});
+  if(!e)return Response.json({error:'missing'},{status:404});
   if(method==='GET')return Response.json(e);
   if(options.headers['If-Match']!==revision(e))return Response.json({error:'version'},{status:412});
   if(method==='DELETE'){events.delete(id);return new Response(null,{status:204})}
@@ -111,6 +113,14 @@ for(const provider of ['microsoft','google'])test(provider+' two-way mapping, im
   const seriesLink=db.prepare("SELECT l.* FROM calendar_sync_links l JOIN workspace_records r ON r.record_key=l.record_key WHERE r.external_id='native-series'").get(),series=events.get(seriesLink.external_id);assert.ok(series,seriesLink.error);assert.ok(series.recurrence);
   events.set(series.id,stamp(series.id,{...series,recurrence:google?['RRULE:FREQ=WEEKLY;INTERVAL=1;WKST=MO;BYDAY=TU;COUNT=5']:{...series.recurrence,range:{...series.recurrence.range,numberOfOccurrences:5}}}));
   await req(owner.cookie,endpoint,'POST',{});assert.equal((await req(owner.cookie,'personal/data/event/native-series')).body.record.recurrence.count,5);
+  let edited=(await req(owner.cookie,'personal/data/event/native-series')).body.record;
+  edited=(await req(owner.cookie,'personal/data/event/native-series','PUT',{...edited,exceptions:{'2026-12-08':{title:'One review only'}}})).body.record;
+  await req(owner.cookie,endpoint,'POST',{});let instance=[...events.values()].find(e=>(e.recurringEventId||e.seriesMasterId)===series.id);assert.ok(instance);assert.equal(google?instance.summary:instance.subject,'One review only');assert.equal(google?events.get(series.id).summary:events.get(series.id).subject,'Weekly review');
+  instance=stamp(instance.id,{...instance,...(google?{summary:'External occurrence'}:{subject:'External occurrence'})});events.set(instance.id,instance);await req(owner.cookie,endpoint,'POST',{});
+  edited=(await req(owner.cookie,'personal/data/event/native-series')).body.record;assert.equal(edited.exceptions['2026-12-08'].title,'External occurrence');
+  edited=(await req(owner.cookie,'personal/data/event/native-series','PUT',{...edited,exceptions:{...edited.exceptions,'2026-12-08':{cancelled:true}}})).body.record;await req(owner.cookie,endpoint,'POST',{});
+  const occurrence=(await req(owner.cookie,endpoint)).body.items.find(i=>i.occurrence);assert.ok(occurrence);assert.ok(events.has(instance.id));
+  assert.equal((await req(owner.cookie,endpoint+'/'+occurrence.id,'POST',{action:'delete-both',confirm:true,version:occurrence.version})).status,200);assert.ok(!events.has(instance.id));assert.ok(events.has(series.id));
   await req(owner.cookie,'calendar/connections/account','DELETE');assert.equal((await req(owner.cookie,'personal/data/task')).body.records.length,1);assert.equal(db.prepare('SELECT count(*) n FROM calendar_sync_links').get().n,0);
  }finally{await new Promise(resolve=>server.close(resolve));api.close();db.close();rmSync(dir,{recursive:true,force:true})}
 });

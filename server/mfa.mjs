@@ -6,7 +6,7 @@ import {verifyTheoryPassword} from './theory-password.mjs';
 export function requireMfaTransport(req){const host=new URL('http://'+req.headers.host).hostname;if(!req.socket.encrypted&&!(['localhost','127.0.0.1','[::1]'].includes(host)&&['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket.remoteAddress)))throw Object.assign(Error('Two-factor authentication requires HTTPS outside local development.'),{status:403})}
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const fail=(status,message)=>{throw Object.assign(Error(message),{status})};
-export function createMfa(db,{databasePath,now=Date.now}={}){
+export function createMfa(db,{databasePath,now=Date.now,audit=()=>{}}={}){
  const one=(s,...a)=>db.prepare(s).get(...a),run=(s,...a)=>db.prepare(s).run(...a);
  db.exec(`CREATE TABLE IF NOT EXISTS user_mfa(user_id TEXT PRIMARY KEY REFERENCES users(id),secret TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,expires INTEGER NOT NULL,last_step INTEGER NOT NULL DEFAULT -1);
  CREATE TABLE IF NOT EXISTS mfa_recovery(user_id TEXT NOT NULL REFERENCES users(id),code_hash TEXT NOT NULL,PRIMARY KEY(user_id,code_hash));
@@ -47,10 +47,10 @@ export function createMfa(db,{databasePath,now=Date.now}={}){
   }
   if(path==='/api/settings/mfa/enable'){
    await fresh(user,body,token);if(one('SELECT setup_session FROM user_mfa WHERE user_id=?',user.id)?.setup_session!==hash(token))fail(403,'Finish setup in the session that started it.');verify(user.id,body.code,{enrol:true});const codes=Array.from({length:10},()=>randomBytes(16).toString('hex'));
-   db.exec('BEGIN IMMEDIATE');try{run('UPDATE user_mfa SET enabled=1,expires=0 WHERE user_id=?',user.id);run('DELETE FROM mfa_recovery WHERE user_id=?',user.id);for(const code of codes)run('INSERT INTO mfa_recovery VALUES(?,?)',user.id,hash(user.id+':'+code));revoke(user.id,token);run('UPDATE sessions SET mfa_verified=1 WHERE token=?',hash(token));db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}return send(200,{enabled:true,recoveryCodes:codes});
+   db.exec('BEGIN IMMEDIATE');try{run('UPDATE user_mfa SET enabled=1,expires=0 WHERE user_id=?',user.id);run('DELETE FROM mfa_recovery WHERE user_id=?',user.id);for(const code of codes)run('INSERT INTO mfa_recovery VALUES(?,?)',user.id,hash(user.id+':'+code));revoke(user.id,token);run('UPDATE sessions SET mfa_verified=1 WHERE token=?',hash(token));db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}audit(user.id,null,'two-factor-enabled');return send(200,{enabled:true,recoveryCodes:codes});
   }
   if(path==='/api/settings/mfa/disable'){
-   await fresh(user,body,token);verify(user.id,body.code);db.exec('BEGIN IMMEDIATE');try{run('DELETE FROM user_mfa WHERE user_id=?',user.id);run('DELETE FROM mfa_recovery WHERE user_id=?',user.id);revoke(user.id,token);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}return send(200,{enabled:false});
+   await fresh(user,body,token);verify(user.id,body.code);db.exec('BEGIN IMMEDIATE');try{run('DELETE FROM user_mfa WHERE user_id=?',user.id);run('DELETE FROM mfa_recovery WHERE user_id=?',user.id);revoke(user.id,token);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}audit(user.id,null,'two-factor-disabled');return send(200,{enabled:false});
   }
   fail(404,'Two-factor action not found.');
  }};

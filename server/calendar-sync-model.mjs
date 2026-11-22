@@ -13,7 +13,7 @@ export function localSyncItem(row,data,context={}){
  const start=task?(data.start||data.due)+(allDay?'':'T'+data.calendarTime.start):data.start;
  const end=task?data.due+(allDay?'':'T'+data.calendarTime.end):data.end;
  if(!start||!end||!validTaskDate(start.slice(0,10))||!validTaskDate(end.slice(0,10)))error('Give this item valid start and end dates before syncing.');
- if(task&&data.recurrence?.mode&&data.recurrence.mode!=='none'||data.occurrenceOf||Object.keys(data.exceptions||{}).length)error('Recurring items need series synchronisation before they can be linked.');
+ if(task&&data.recurrence?.mode&&data.recurrence.mode!=='none'||data.occurrenceOf)error('Recurring items need series synchronisation before they can be linked.');
  const description=task?data.description||'':data.notes||'';
  const metadata=['Theory '+(task?'task':'event'),context.company&&'Company: '+context.company,(data.channel||data.discipline)&&'Channel: '+(data.channel||data.discipline),task&&'Status: '+(data.done?'Done':data.status||'To do'),context.link&&'Open in Theory: '+context.link].filter(Boolean).join('\n');
  return {title:(task&&data.done?'✓ ':'')+data.title,description,metadata,start:allDay?start:reminderInstant(start,zone),end:allDay?addDays(end,1):reminderInstant(end,zone),allDay,location:data.location||'',timeZone:zone,localStart:start,localEnd:allDay?addDays(end,1):end,recurrence:task?null:data.recurrence||null,updatedAt:row.updated_at};

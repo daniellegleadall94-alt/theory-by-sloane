@@ -32,6 +32,10 @@ test('Phase 1: subtasks, followers, templates, shared views and confirmed schedu
   assert.ok((await request(member.cookie,'planner/notifications')).body.notifications.some(n=>n.title==='Updated: followed'));
   assert.equal((await request(other.cookie,'work-management/follow','POST',{organisationId:org,id:task.id,version:task.version,follow:true})).status,403);
   assert.equal((await request(cookie,root+'/data/template','POST',{title:'Invalid',visibility:'private',blueprint:{title:'Invalid',customFields:[{id:'x',name:'x',type:'number',value:'bad'}]}})).status,400);
+  const choiceFields=[{id:'format',name:'Format',type:'dropdown',options:['Email','Video'],value:'Email'},{id:'markets',name:'Markets',type:'multi-select',options:['UK','EU'],value:['UK','EU']}];
+  const choiceTask=await request(cookie,root+'/data/task','POST',{id:'choice-task',title:'Choice fields',due:'',done:false,customFields:choiceFields});assert.equal(choiceTask.status,201,JSON.stringify(choiceTask.body));assert.deepEqual(choiceTask.body.record.customFields,choiceFields);
+  assert.equal((await request(cookie,root+'/data/task','POST',{id:'bad-choice',title:'Bad choice',due:'',done:false,customFields:[{...choiceFields[0],value:'Unknown'}]})).status,400);
+  assert.equal((await request(cookie,root+'/data/template','POST',{title:'Invalid selection',visibility:'private',blueprint:{title:'Invalid',customFields:[{...choiceFields[1],value:['UK','UK']}]}})).status,400);
   const template=await request(cookie,root+'/data/template','POST',{title:'Creative brief',visibility:'shared',blueprint:{title:'Prepare creative brief',effortHours:3,customFields:[{id:'audience',name:'Audience',type:'text',value:'Merchants'}],checklist:[{id:'x',title:'Research',done:false}]}});assert.equal(template.status,201,JSON.stringify(template.body));
   assert.equal((await request(member.cookie,root+'/data/template/'+template.body.record.id)).status,200);
   assert.equal((await request(member.cookie,root+'/data/template','POST',{title:'Unauthorised shared',visibility:'shared',blueprint:{title:'x'}})).status,403);
@@ -104,7 +108,7 @@ test('CSV/XLSX import maps, validates, previews, reports duplicates and errors, 
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Work');sheet.addRow(['Task','Due','Hours']);sheet.addRow(['Excel task',new Date('2026-11-09T00:00:00Z'),2]);sheet.getCell('B2').numFmt='yyyy-mm-dd';sheet.addRow(['Formula date',{formula:'TODAY()'},1]);
   const xlsx=await upload('work.xlsx',await book.xlsx.writeBuffer());assert.equal(xlsx.status,201,JSON.stringify(xlsx.body));assert.equal(xlsx.body.sheets[0].rows[0][1],'2026-11-09');
   preview=await request(cookie,`imports/${xlsx.body.id}/preview`,'POST',{organisationId:org,unitIds:[brand.id],mapping:{title:0,due:1,effortHours:2}});assert.equal(preview.body.valid,1);assert.equal(preview.body.errors,1);
-  const stale=await upload('stale.csv','Task\nAnother task');await request(cookie,`imports/${stale.body.id}/preview`,'POST',{organisationId:org,unitIds:[brand.id],mapping:{title:0}});await request(cookie,root+'/data/task/'+task.id,'PUT',{...task,title:'Changed manually'});assert.equal((await request(cookie,`imports/${stale.body.id}/apply`,'POST',{confirm:true})).status,409);
+  const stale=await upload('stale.csv','Task\nAnother task');assert.equal(stale.status,201,JSON.stringify(stale.body));await request(cookie,`imports/${stale.body.id}/preview`,'POST',{organisationId:org,unitIds:[brand.id],mapping:{title:0}});await request(cookie,root+'/data/task/'+task.id,'PUT',{...task,title:'Changed manually'});assert.equal((await request(cookie,`imports/${stale.body.id}/apply`,'POST',{confirm:true})).status,409);
   assert.equal((await upload('unsupported.xls','not a workbook')).status,400);
   assert.equal((await upload('fake.xlsx','not a zip')).status,400);
   assert.equal((await request(other.cookie,`imports/${xlsx.body.id}/apply`,'POST',{confirm:true,confirmValidOnly:true})).status,404);

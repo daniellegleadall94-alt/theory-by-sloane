@@ -1,4 +1,6 @@
 import {providerPayload} from './calendar-sync-model.mjs';
+import {occurrenceDate} from './calendar-occurrence-model.mjs';
+import {addDays} from '../src/overview.ts';
 
 export function calendarSyncProvider(account,request){
  const google=account.provider==='google',root=google?'https://www.googleapis.com/calendar/v3':'https://graph.microsoft.com/v1.0/me';
@@ -8,6 +10,29 @@ export function calendarSyncProvider(account,request){
  return {
   async createCalendar(){return call(root+'/calendars','POST',google?{summary:'Theory',timeZone:'Europe/London'}:{name:'Theory'})},
   async get(calendar,id){try{return await call(eventsUrl(calendar)+'/'+encodeURIComponent(id))}catch(error){if(error.providerStatus===404||error.providerStatus===410)return null;throw error}},
+  async exceptions(calendar,event,known,master){
+   if(google)return known.filter(item=>item.recurringEventId===event.id).map(item=>({date:occurrenceDate(account.provider,item,master),event:item}));
+   const details=await call(eventsUrl(calendar)+'/'+encodeURIComponent(event.id)+'?$select=id,exceptionOccurrences,cancelledOccurrences&$expand=exceptionOccurrences');
+   if(details['exceptionOccurrences@odata.nextLink'])throw Error('This series has too many exceptions to synchronise safely.');
+   const result=[];if((details.exceptionOccurrences?.length||0)+(details.cancelledOccurrences?.length||0)>1000)throw Error('This series has too many exceptions to synchronise safely.');
+   for(const value of details.exceptionOccurrences||[]){const item=await this.get(calendar,value.id);if(!item)throw Error('An occurrence changed while syncing. Try again.');result.push({date:occurrenceDate(account.provider,item,master),event:item})}
+   for(const id of details.cancelledOccurrences||[]){const prefix='OID.'+event.id+'.',date=id.startsWith(prefix)?id.slice(prefix.length):'';if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw Error('The provider returned an unknown cancelled occurrence identifier.');result.push({date,event:{id,isCancelled:true}})}
+   return result;
+  },
+  async instance(calendar,masterId,date,master){
+   const base=eventsUrl(calendar)+'/'+encodeURIComponent(masterId)+'/instances',params=new URLSearchParams(google?{timeMin:addDays(date,-2)+'T00:00:00Z',timeMax:addDays(date,3)+'T00:00:00Z',showDeleted:'true',maxResults:'1000'}:{startDateTime:addDays(date,-2)+'T00:00:00Z',endDateTime:addDays(date,3)+'T00:00:00Z','$top':'1000'});
+   let url=base+'?'+params;const matches=[];
+   for(let page=0;url;page++){
+    if(page>10)throw Error('Too many recurring instances returned.');const parsed=new URL(url);if(parsed.origin!==new URL(base).origin||parsed.pathname!==new URL(base).pathname)throw Error('Unexpected recurrence page.');
+    const data=await call(url);for(const item of google?data.items||[]:data.value||[])if(occurrenceDate(account.provider,item,master)===date)matches.push(item);
+    if(google&&data.nextPageToken){parsed.searchParams.set('pageToken',data.nextPageToken);url=parsed.href}else url=google?null:data['@odata.nextLink'];
+   }
+   if(matches.length!==1)throw Error('The original recurring instance could not be identified uniquely.');return matches[0];
+  },
+  async updateInstance(calendar,id,item,revision){
+   if(!revision)throw Error('The occurrence has no provider version.');const body=providerPayload(account.provider,{...item,recurrence:null});delete body.recurrence;
+   return call(eventsUrl(calendar)+'/'+encodeURIComponent(id)+(google?'?sendUpdates=none':''),'PATCH',body,revision);
+  },
   async checkSeries(calendar,event,knownEvents){
    if(!event.recurrence||Array.isArray(event.recurrence)&&!event.recurrence.length)return;
    if(google){if(knownEvents.some(item=>item.recurringEventId===event.id))throw Error('This series has occurrence changes. Sync is paused until occurrence synchronisation is supported.');return}

@@ -1,3 +1,4 @@
+import {createOccurrenceSync} from './calendar-occurrence-sync.mjs';
 import {createCalendarSubscriptions} from './calendar-subscriptions.mjs';
 import {randomUUID} from 'node:crypto';
 import {calendarSyncProvider} from './calendar-sync-provider.mjs';
@@ -27,6 +28,7 @@ export function createCalendarSync(db,workspace,{request,origin,refreshCalendars
   run('INSERT INTO calendar_sync_history VALUES(?,?,?,?,?,?)',randomUUID(),account.id,row.record_key,action,JSON.stringify(overwritten),now());
   if(row.kind==='task')run('INSERT INTO task_activity VALUES(?,?,?,?,?,?,?)',randomUUID(),row.record_key,account.user_id,'Calendar sync',action,JSON.stringify(['title','dates','description']),now());
  };
+ const occurrences=createOccurrenceSync(db,workspace,{itemFor,history,alive,now});
  const saveRemote=(account,row,item)=>{
   if(!accessible(account,row))fail(403,'You no longer have permission to edit this Theory item.');if(row.organisation_id)workspace.assertWritable(row.organisation_id);
   const data=workspace.result(row),next=applyExternalItem(row.kind,data,item,data.calendarTime?.timeZone||data.timeZone||'Europe/London');
@@ -71,9 +73,13 @@ export function createCalendarSync(db,workspace,{request,origin,refreshCalendars
     try{
      let event=link.external_id?remote.get(link.external_id):listing.items.find(event=>event.transactionId===link.identity||event.id===link.identity);
      if(link.external_id&&!event)event=await provider.get(settings.calendar_id,link.external_id);alive();
-     if(event)await provider.checkSeries(settings.calendar_id,event,known);alive();
+     if(event&&rowFor(link.record_key)?.kind!=='event')await provider.checkSeries(settings.calendar_id,event,known);alive();
      if(event&&!link.external_id){run('UPDATE calendar_sync_links SET external_id=? WHERE id=?',event.id,link.id);link.external_id=event.id}
      await reconcile(account,settings,provider,link,event);alive();
+     const fresh=one('SELECT * FROM calendar_sync_links WHERE id=?',link.id),current=rowFor(link.record_key);
+     if(fresh&&!fresh.pending&&!fresh.error&&current?.kind==='event'&&JSON.parse(current.data).recurrence?.mode&&JSON.parse(current.data).recurrence.mode!=='none'){
+      const master=await provider.get(settings.calendar_id,fresh.external_id);alive();if(master)await occurrences.sync(account,settings,provider,fresh,master,known);
+     }
     }catch(error){alive();run('UPDATE calendar_sync_links SET error=? WHERE id=?',String(error.message).slice(0,500),link.id)}
    }
    for(const event of listing.items){
@@ -108,12 +114,14 @@ export function createCalendarSync(db,workspace,{request,origin,refreshCalendars
     const links=all('SELECT * FROM calendar_sync_links WHERE account_id=? ORDER BY last_synced_at DESC',account.id),linked=new Set(links.map(link=>link.external_id));
     const items=links.filter(link=>workspace.canRead(user.id,rowFor(link.record_key)||JSON.parse(link.snapshot))).map(link=>({id:link.id,version:rowFor(link.record_key)?.version,title:JSON.parse(JSON.parse(link.snapshot).data).title,pending:link.pending,error:link.error,lastSyncedAt:link.last_synced_at}));
     for(const cached of all('SELECT data FROM calendar_sync_remote_cache WHERE account_id=?',account.id)){const event=JSON.parse(cached.data);if(!linked.has(event.id)&&event.recurrence&&(!Array.isArray(event.recurrence)||event.recurrence.length))items.push({id:'external:'+event.id,title:String(event.summary||event.subject||'Recurring event').slice(0,180),pending:'',error:'This external recurring series has not been imported as a task. It remains in your connected calendar.'})}
+    items.push(...occurrences.items(account.id,user.id));
     const conflicts=all('SELECT * FROM calendar_sync_history WHERE account_id=? ORDER BY created_at DESC LIMIT 100',account.id).filter(entry=>{const row=rowFor(entry.record_key);return row&&workspace.canRead(user.id,row)}).slice(0,20).map(entry=>({id:entry.id,action:entry.action,at:entry.created_at,overwritten:JSON.parse(entry.overwritten)}));
     return send(200,{push:subscriptions.status(account.id),settings:settings||null,items,conflicts});
    }
    if(!available(account))fail(403,'This account cannot synchronise calendars.');
    if(req.method==='POST'&&route[2]){
-    if(locks.has(account.id))await locks.get(account.id).catch(()=>{});const link=one('SELECT * FROM calendar_sync_links WHERE id=? AND account_id=?',route[2],account.id),body=await bodyOf(req);
+    if(locks.has(account.id))await locks.get(account.id).catch(()=>{});const [linkId,occurrenceDay]=route[2].split('~'),link=one('SELECT * FROM calendar_sync_links WHERE id=? AND account_id=?',linkId,account.id),body=await bodyOf(req);
+    if(occurrenceDay){if(!link||!settings)fail(404,'Synced occurrence not found.');await occurrences.confirm(account,settings,calendarSyncProvider(account,request),link,occurrenceDay,body);return send(200,{ok:true})}
     if(!link||!settings)fail(404,'Synced item not found.');const row=rowFor(link.record_key),previous=JSON.parse(link.snapshot);
     if(!accessible(account,row||previous))fail(403,'You no longer have permission to change this item.');
     if(!['local-deleted','remote-deleted'].includes(link.pending))fail(409,'Refresh this item before resolving its deletion.');

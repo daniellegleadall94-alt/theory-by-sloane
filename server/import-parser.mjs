@@ -1,5 +1,3 @@
-import ExcelJS from 'exceljs';
-import unzipper from 'unzipper';
 import {parentPort,workerData} from 'node:worker_threads';
 
 export function parseCsv(text){
@@ -15,6 +13,7 @@ export async function parseSpreadsheet({name,base64}){
  const buffer=Buffer.from(base64,'base64');if(buffer.length>4*1024*1024)throw Error('The file exceeds 4 MB.');let sheets;
  if(/\.csv$/i.test(name)){const rows=parseCsv(buffer.toString('utf8'));sheets=[{name:'CSV',rows,rowNumbers:rows.map((r,i)=>r.sourceRow||i+1)}];}
  else if(/\.xlsx$/i.test(name)){
+  const [{default:ExcelJS},{default:unzipper}]=await Promise.all([import('exceljs'),import('unzipper')]);
   const zip=await unzipper.Open.buffer(buffer);if(zip.files.length>1000||zip.files.reduce((n,f)=>n+f.uncompressedSize,0)>25*1024*1024)throw Error('The workbook expands beyond the supported size.');
   // Check actual decompressed bytes too; central directory sizes alone are untrusted.
   let total=0;for(const file of zip.files){for await(const chunk of file.stream()){total+=chunk.length;if(total>25*1024*1024)throw Error('The workbook expands beyond the supported size.');}}
