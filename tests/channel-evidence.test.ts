@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {channelEvidence} from '../src/channelEvidence.ts';
+const records=[{id:'mix',kind:'strategy',organisationId:'org',unitIds:['company'],entityId:'company',strategyBuilder:true,moduleKey:'channels',nextReviewDate:'2026-01-01',answers:{channels:[{name:'Email',purpose:'Retention',objectiveIds:['goal','hidden']}]}},{id:'goal',kind:'objective',organisationId:'org',unitIds:['company'],kpiId:'measure'},{id:'measure',kind:'kpi',organisationId:'org',unitIds:['company'],performanceMeasure:true,periodEnd:'2026-01-01',actual:5,target:10,direction:'At least'}];
+assert.deepEqual(channelEvidence(records,'org','company','Email','2026-02-01'),{hasPurpose:true,linkedGoals:1,unavailableGoals:1,companyReviewsDue:1,measuredGoals:1,missedTargets:1});
+assert.equal(channelEvidence(records,'other','company','Email','2026-02-01').linkedGoals,0);
+assert.equal(channelEvidence(records,'org','other','Email','2026-02-01').companyReviewsDue,0);
+assert.equal(channelEvidence(records,'org','company','Website','2026-02-01').measuredGoals,0);
+assert.equal(channelEvidence(records,'org','company','Email','2025-12-01').missedTargets,0);
+assert.equal(channelEvidence(records.map(r=>({...r,archived:true})),'org','company','Email','2026-02-01').linkedGoals,0);
+console.log('Company channel evidence isolation, missing links and completed measurement periods passed');

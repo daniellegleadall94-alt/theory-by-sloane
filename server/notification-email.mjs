@@ -14,7 +14,9 @@ export function createNotificationEmail(db,workspace,options={}){
    let attempts=0;
    for(const n of rows){
     if(closed||attempts>=50)break;
-    const pref=JSON.parse(n.notifications),row=db.prepare('SELECT * FROM workspace_records WHERE record_key=?').get(n.record_key);
+    const current=db.prepare('SELECT u.email,u.email_confirmed,s.notifications,COALESCE(r.suspended,0) AS suspended FROM users u JOIN user_settings s ON s.user_id=u.id LEFT JOIN user_restrictions r ON r.user_id=u.id WHERE u.id=?').get(n.user_id);
+    if(!current?.email_confirmed||current.suspended)continue;
+    const pref=JSON.parse(current.notifications),row=db.prepare('SELECT * FROM workspace_records WHERE record_key=?').get(n.record_key);
     if(!['email','both'].includes(pref.channel)||pref.frequency==='off'||!row||!workspace.notificationAllowed(n.user_id,row,workspace.notificationType(n.event_key),'email')||!workspace.notificationReady(n.user_id,n.created_at))continue;
     const prior=db.prepare('SELECT * FROM notification_email_delivery WHERE notification_id=?').get(n.id);
     // Provider idempotency expires after 24 hours. An ambiguous delivery is
@@ -24,7 +26,7 @@ export function createNotificationEmail(db,workspace,options={}){
     db.prepare("INSERT INTO notification_email_delivery VALUES(?,?,?,'retry') ON CONFLICT(notification_id) DO UPDATE SET last_attempt=excluded.last_attempt").run(n.id,now(),now());
     attempts++;
     try{
-     await mail.send({to:n.email,subject:'You have a Theory notification',id:'theory-notification-'+n.id,text:'You have an unread task notification in Theory. Sign in to view your notifications:\n\n'+mail.origin+'/app\n\nYou can change email reminders in Settings > Notifications.'});
+     await mail.send({to:current.email,subject:'You have a Theory notification',id:'theory-notification-'+n.id,text:'You have an unread task notification in Theory. Sign in to view your notifications:\n\n'+mail.origin+'/app\n\nYou can change email reminders in Settings > Notifications.'});
      if(!closed)db.prepare("UPDATE notification_email_delivery SET status='accepted' WHERE notification_id=?").run(n.id);
     }catch{/* Retry without logging recipient addresses or notification content. */}
    }
