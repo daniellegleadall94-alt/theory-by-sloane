@@ -92,3 +92,5 @@ Each item is only marked complete after relevant validation. Later requests to r
 - Asset review checkpoint: cancellation/restart preserves review history when reviewers change. All 46 API tests and model checks passed; production build passed. Authenticated visual review remains pending.
 
 - Contacts/suppliers: structured canonical contact records now support search, type/company filtering and archive/restore. Expenditure can link to a supplier with backend workspace/company checks. Existing simple contacts remain editable. No invitations or marketing consent are implied. Focused isolation/version/company-move tests and production build passed.
+
+- Content planning: parent ideas and canonical task outputs now have briefs, audiences, messages, campaign/objective/file links, independent dates, owners, manual publication evidence and existing task approvals. Agenda and channel/campaign/type/owner filters added. Focused permission/date-independence/workflow checks and build passed. Dedicated calendar content filters, performance links and direct publishing remain pending.

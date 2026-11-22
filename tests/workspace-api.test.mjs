@@ -30,6 +30,18 @@ test('organisation isolation, restricted business access, shared budgets, person
   const summary=(await request(owner.cookie,base+'/summary')).body;assert.equal(summary.campaigns,1);assert.equal(summary.budget,300);assert.equal(summary.units.reduce((sum,u)=>sum+u.allocatedBudget,0),300);
   assert.equal((await request(owner.cookie,base+'/members/'+memberId,'PUT',{role:'member',accessScope:'selected',unitIds:[first.id]})).status,200);
   assert.equal((await request(member.cookie,base+'/data/campaign/shared-campaign')).status,404);
+  const idea={id:'launch-idea',contentIdea:true,title:'Launch story',contentType:'Idea',audience:'Specifiers',keyMessage:'New range',description:'Launch brief',campaign:'shared-campaign',objectiveIds:[],assetIds:[],publicationStatus:'Draft',publishedUrl:'',unitIds:[first.id]};
+  assert.equal((await request(owner.cookie,base+'/data/post','POST',idea)).status,201);
+  const output={...idea,id:'launch-output',contentIdea:false,contentOutput:true,parentContentId:idea.id,due:'2026-12-01',discipline:'Social media',priority:'Medium',done:false};
+  assert.equal((await request(owner.cookie,base+'/data/task','POST',output)).status,201);
+  assert.equal((await request(owner.cookie,base+'/data/task','POST',{...output,id:'launch-email',due:'2026-12-02',discipline:'Email'})).status,201);
+  assert.equal((await request(owner.cookie,base+'/data/task/launch-output','PUT',{...output,version:1,due:'2026-12-03'})).status,200);
+  assert.equal((await request(owner.cookie,base+'/data/task/launch-email')).body.record.due,'2026-12-02');
+  assert.equal((await request(owner.cookie,base+'/data/task','POST',{...output,id:'invalid-content-scope',unitIds:[second.id]})).status,400);
+  assert.equal((await request(owner.cookie,base+'/data/task','POST',{...output,id:'missing-parent',parentContentId:'missing'})).status,400);
+  assert.equal((await request(owner.cookie,base+'/data/task/launch-output','PUT',{...output,version:2,publicationStatus:'Published manually'})).status,400);
+  assert.equal((await request(owner.cookie,base+'/data/task/launch-output','PUT',{...output,version:2,publicationStatus:'Published manually',publishedUrl:'https://example.com/article'})).status,200);
+  assert.equal((await request(outsider.cookie,base+'/data/post/launch-idea')).status,403);
   const supplier={id:'studio',contactDirectory:true,title:'Design studio',contactType:'Supplier',companyName:'Studio Ltd',jobTitle:'',email:'studio@example.com',phone:'',website:'https://example.com',description:'Design partner',status:'Active',unitIds:[first.id]};
   assert.equal((await request(owner.cookie,base+'/data/contact','POST',supplier)).status,201);
   assert.equal((await request(owner.cookie,base+'/data/contact','POST',{...supplier,id:'bad-url',website:'javascript:alert(1)'})).status,400);
@@ -88,7 +100,7 @@ test('organisation isolation, restricted business access, shared budgets, person
   const personal={id:'private-task',title:'Personal work',due:'2026-11-02',done:false,unitIds:[]};
   assert.equal((await request(owner.cookie,'personal/data/task','POST',personal)).status,201);
   assert.equal((await request(member.cookie,'personal/data/task/private-task')).status,404);
-  const ownTasks=(await request(owner.cookie,'my-work')).body.tasks;assert.equal(ownTasks.length,2);assert.ok(!ownTasks.some(t=>t.id==='first-task'&&t.organisationId===org));
+  const ownTasks=(await request(owner.cookie,'my-work')).body.tasks;assert.equal(ownTasks.length,4);assert.ok(!ownTasks.some(t=>t.id==='first-task'&&t.organisationId===org));
   // Additive legacy imports never replace an existing server record.
   const imported=await request(owner.cookie,base+'/import','POST',{records:[{...task,kind:'task',title:'Do not replace',assigneeIds:[owner.body.user.id],campaign:''}]});assert.equal(imported.body.imported,0);
   assert.equal((await request(owner.cookie,base+'/data/task/first-task')).body.record.title,'Assigned task');

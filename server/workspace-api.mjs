@@ -71,6 +71,17 @@ export function createWorkspaceLayer(db){
    if(data.attendeeIds&&(!Array.isArray(data.attendeeIds)||data.attendeeIds.length>200||data.attendeeIds.some(id=>typeof id!=='string'||(org?!member(id,org):id!==userId))))fail(400,'Choose team members from this organisation.');
    if(org&&data.visibility==='private')fail(400,'Company calendar events are visible to authorised company members.');
   }
+  if(['post','task'].includes(kind)&&(data?.contentIdea||data?.contentOutput||existing&&(JSON.parse(existing.data).contentIdea||JSON.parse(existing.data).contentOutput))){
+   const output=kind==='task';if(output?data.contentOutput!==true:data.contentIdea!==true)fail(400,'Keep the content record type.');
+   for(const [key,max] of Object.entries({contentType:100,audience:4000,keyMessage:4000,description:20000,publishedUrl:2000}))if(typeof data[key]!=='string'||data[key].length>max)fail(400,'Check the content brief and publication details.');
+   if(!['Draft','Ready','Scheduled manually','Published manually'].includes(data.publicationStatus))fail(400,'Choose a publication status.');
+   if(data.publishedUrl){try{const url=new URL(data.publishedUrl);if(!['https:','http:'].includes(url.protocol)||url.username||url.password)throw Error()}catch{fail(400,'Enter a public http or https publication URL.')}}
+   if(data.publicationStatus==='Published manually'&&!data.publishedUrl)fail(400,'Record the published URL before marking this output published.');
+   const links=[['campaign','campaign'],['objectiveIds','objective'],['assetIds','file']];
+   if(output){if(typeof data.parentContentId!=='string'||!data.parentContentId)fail(400,'Choose a parent content idea.');links.push(['parentContentId','post']);}
+   for(const field of ['objectiveIds','assetIds'])if(!Array.isArray(data[field])||data[field].length>100||data[field].some(id=>typeof id!=='string'))fail(400,'Choose valid content links.');
+   for(const [field,linkedKind] of links)for(const id of Array.isArray(data[field])?data[field]:data[field]?[data[field]]:[]){const linked=one('SELECT * FROM workspace_records WHERE scope=? AND kind=? AND external_id=?',scopeOf(userId,org),linkedKind,id);if(!linked||!canRead(userId,linked)||field==='parentContentId'&&!JSON.parse(linked.data).contentIdea)fail(400,'Choose accessible content links in this workspace.');const units=unitsOf(linked);if(units.length&&(!data.unitIds?.length||data.unitIds.some(id=>!units.includes(id))))fail(400,'Content links must cover the same companies.');}
+  }
   if(kind==='contact'&&(data?.contactDirectory||existing&&JSON.parse(existing.data).contactDirectory)&&!validContact(data))fail(400,'Check contact name, type, email and website.');
   if(kind==='strategy'&&(data?.strategyBuilder||existing&&JSON.parse(existing.data).strategyBuilder)&&!options.strategyBuilder)fail(403,'Use the strategy builder to update this record.');
   if(kind==='kpi'&&(data?.performanceMeasure||existing&&JSON.parse(existing.data).performanceMeasure)){
