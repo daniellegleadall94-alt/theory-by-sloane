@@ -67,12 +67,25 @@ export function createWorkManagementLayer(db,workspace){
   }
   if(path==='/api/work-management/bulk'&&req.method==='POST'){
    const body=await bodyOf(req);if(!['preview','apply'].includes(body.mode))fail(400,'Preview or apply the change.');
-   const patch=body.patch;if(!patch||!Object.keys(patch).length||Object.keys(patch).some(k=>!['plannedDate','priority','archived'].includes(k)))fail(400,'Choose a supported bulk change.');
+   const patch=body.patch;if(!patch||!Object.keys(patch).length||Object.keys(patch).some(k=>!['plannedDate','priority','archived','status','accountableOwnerId'].includes(k)))fail(400,'Choose a supported bulk change.');
+   if(patch.status!==undefined&&!['To do','In progress','In review','Done'].includes(patch.status)||patch.accountableOwnerId!==undefined&&(typeof patch.accountableOwnerId!=='string'||!patch.accountableOwnerId))fail(400,'Choose a valid status or accountable owner.');
    if(patch.plannedDate!==undefined&&patch.plannedDate!==''&&!validTaskDate(patch.plannedDate)||patch.priority!==undefined&&!['Low','Medium','High'].includes(patch.priority)||patch.archived!==undefined&&typeof patch.archived!=='boolean')fail(400,'Check the bulk change.');
    const result=workspace.transaction(()=>{
     const rows=checkRows(user.id,body.items);
-    if(body.mode==='preview')return {preview:rows.map(row=>{const t=workspace.result(row);return {id:t.id,title:t.title,organisationId:t.organisationId,before:Object.fromEntries(Object.keys(patch).map(k=>[k,t[k]??null])),after:patch,warnings:[...dependencyWarnings({...t,...patch},workspace.permittedRows(user.id,row.organisation_id,'task').map(workspace.result)),...(patch.archived&&all("SELECT data FROM workspace_records WHERE scope=? AND kind='task'",row.scope).some(r=>JSON.parse(r.data).dependencyIds?.includes(t.id))?['Other tasks depend on this task. Archiving keeps those links; restore it to finish its work.']:[])]}})};
-    const changes=rows.map(row=>{const old=workspace.result(row),saved=workspace.save(user.id,row.organisation_id,'task',row.external_id,{...old,...patch},row);return {key:row.record_key,version:saved.version,before:Object.fromEntries(Object.keys(patch).map(k=>[k,old[k]??null]))}});
+    const changesFor=row=>{
+     const task=workspace.result(row),change={...patch};
+     if(patch.accountableOwnerId!==undefined)change.assigneeIds=[...new Set([...(task.assigneeIds||[]),patch.accountableOwnerId])];
+     if(patch.status!==undefined){
+      if(task.recurrence&&task.recurrence.mode!=='none')fail(400,'Change recurring task progress individually so occurrence history is preserved.');
+      change.done=patch.status==='Done';change.completedAt=change.done?(task.completedAt||new Date().toISOString()):undefined;
+      change.completedBy=change.done?(task.completedBy||user.id):undefined;change.completedByName=change.done?(task.completedByName||user.name):undefined;
+     }
+     workspace.validateData({...task,...change},'task',row.organisation_id,user.id,row);
+     return change;
+    };
+    const patches=rows.map(changesFor);
+    if(body.mode==='preview')return {preview:rows.map((row,index)=>{const patch=patches[index],t=workspace.result(row);return {id:t.id,title:t.title,organisationId:t.organisationId,before:Object.fromEntries(Object.keys(patch).map(k=>[k,t[k]??null])),after:patch,warnings:[...dependencyWarnings({...t,...patch},workspace.permittedRows(user.id,row.organisation_id,'task').map(workspace.result)),...(patch.archived&&all("SELECT data FROM workspace_records WHERE scope=? AND kind='task'",row.scope).some(r=>JSON.parse(r.data).dependencyIds?.includes(t.id))?['Other tasks depend on this task. Archiving keeps those links; restore it to finish its work.']:[])]}})};
+    const changes=rows.map((row,index)=>{const patch=patches[index],old=workspace.result(row),saved=workspace.save(user.id,row.organisation_id,'task',row.external_id,{...old,...patch},row);return {key:row.record_key,version:saved.version,before:Object.fromEntries(Object.keys(patch).map(k=>[k,old[k]??null]))}});
     const undoId=randomUUID();run('DELETE FROM work_bulk_undo WHERE expires_at<?',new Date().toISOString());run('INSERT INTO work_bulk_undo VALUES(?,?,?,?)',undoId,user.id,JSON.stringify(changes),new Date(Date.now()+15*60000).toISOString());return {updated:changes.length,undoId};
    });return send(200,result);
   }

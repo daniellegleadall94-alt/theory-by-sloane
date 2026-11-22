@@ -67,5 +67,20 @@ test('dependencies, private views, mentions, activity, capacity and atomic bulk 
   assert.equal((await request(cookie,'work-management/undo','POST',{undoId:archive.body.undoId})).status,200);
   assert.equal((await request(cookie,root+'/data/task/y')).body.record.archived,undefined);
 
+  const bulkOwner=await make('bulk-owner',{assigneeIds:[owner.body.user.id]});
+  const selected=[{id:bulkOwner.id,version:bulkOwner.version,organisationId:org}];
+  assert.equal((await request(cookie,'work-management/bulk','POST',{mode:'preview',items:selected,patch:{accountableOwnerId:other.body.user.id}})).status,400);
+  assert.equal((await request(cookie,'work-management/bulk','POST',{mode:'preview',items:selected,patch:{accountableOwnerId:memberId}})).status,200);
+  assert.equal((await request(cookie,root+'/data/task/bulk-owner')).body.record.version,1);
+  const assignment=await request(cookie,'work-management/bulk','POST',{mode:'apply',items:selected,patch:{accountableOwnerId:memberId}});assert.equal(assignment.status,200,JSON.stringify(assignment.body));
+  let assigned=(await request(cookie,root+'/data/task/bulk-owner')).body.record;
+  assert.equal(assigned.accountableOwnerId,memberId);assert.ok(assigned.assigneeIds.includes(owner.body.user.id));assert.ok(assigned.assigneeIds.includes(memberId));
+  assert.equal((await request(cookie,'work-management/undo','POST',{undoId:assignment.body.undoId})).status,200);
+  assigned=(await request(cookie,root+'/data/task/bulk-owner')).body.record;assert.equal(assigned.accountableOwnerId,owner.body.user.id);assert.deepEqual(assigned.assigneeIds,[owner.body.user.id]);
+  const completion=await request(cookie,'work-management/bulk','POST',{mode:'apply',items:[{...selected[0],version:assigned.version}],patch:{status:'Done'}});assert.equal(completion.status,200);
+  const completed=(await request(cookie,root+'/data/task/bulk-owner')).body.record;assert.equal(completed.done,true);assert.ok(completed.completedAt);assert.equal(completed.completedBy,owner.body.user.id);
+  assert.equal((await request(cookie,'work-management/undo','POST',{undoId:completion.body.undoId})).status,200);
+  const undone=(await request(cookie,root+'/data/task/bulk-owner')).body.record;assert.equal(undone.done,false);assert.equal(undone.completedAt,undefined);
+  assert.equal((await request(cookie,'work-management/bulk','POST',{mode:'preview',items:[{id:recurring.id,version:recurring.version,organisationId:org}],patch:{status:'Done'}})).status,400);
  }finally{await new Promise(resolve=>server.close(resolve));api.close()}
 });
