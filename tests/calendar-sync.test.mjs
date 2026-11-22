@@ -17,7 +17,9 @@ test('native event repeat patterns retain weekday, interval, count and local day
   assert.deepEqual(eventOccurrences({...event,recurrence:restored},'2026-03-01','2027-01-01').map(e=>e.start),eventOccurrences(event,'2026-03-01','2027-01-01').map(e=>e.start));
   const payload=providerPayload(provider,localSyncItem({kind:'event'},event));assert.equal(provider==='google'?payload.start.timeZone:payload.start.timeZone,'Europe/London');
  }
- assert.throws(()=>exportRecurrence('google',{start:'2026-01-31',end:'2026-01-31',allDay:true,recurrence:{mode:'monthly',interval:1,days:[]}}),/without changing/);
+ for(const day of [29,30,31]){const event={start:'2028-01-'+day,end:'2028-01-'+day,allDay:true,timeZone:'Europe/London',recurrence:{mode:'monthly',interval:1,days:[],count:15}};const rule=exportRecurrence('google',event);assert.ok(rule[0].includes('BYSETPOS=-1'));const restored=importRecurrence('google',rule,event.start);assert.deepEqual(eventOccurrences({...event,recurrence:restored},'2028-01-01','2029-12-31').map(e=>e.start),eventOccurrences(event,'2028-01-01','2029-12-31').map(e=>e.start));assert.throws(()=>exportRecurrence('microsoft',event),/without changing/)}
+ assert.throws(()=>importRecurrence('google',['RRULE:FREQ=MONTHLY;BYMONTHDAY=28,31;BYSETPOS=-1'],'2026-01-31'),/without changing/);
+ assert.throws(()=>applyExternalItem('task',{title:'Keep me'},{recurrence:{mode:'weekly'}}),/original task has been retained/);
  assert.throws(()=>importRecurrence('google',['RRULE:FREQ=MONTHLY;BYMONTHDAY=31'],'2026-01-31'),/without changing/);
 });
 

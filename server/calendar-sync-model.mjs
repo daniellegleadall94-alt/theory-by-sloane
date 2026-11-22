@@ -38,6 +38,7 @@ export function externalSyncItem(provider,event){
 }
 export const syncFingerprint=item=>createHash('sha256').update(JSON.stringify([item.title,item.description,item.metadata||'',item.recurrence||null,item.start,item.end,item.allDay,item.location])).digest('hex');
 export function applyExternalItem(kind,data,item,zone='Europe/London'){
+ if(kind==='task'&&item.recurrence)error('A recurring provider event cannot replace this task until task-series synchronisation is supported. The original task has been retained.');
  const start=item.allDay?item.start:inCalendarZone(item.start.slice(0,16),'UTC',zone),end=item.allDay?addDays(item.end,-1):inCalendarZone(item.end.slice(0,16),'UTC',zone);
  if(kind==='task')return {...data,title:item.title.replace(/^✓\s*/,''),description:item.description,location:item.location,start:start.slice(0,10),due:end.slice(0,10),calendarTime:item.allDay?undefined:{start:start.slice(11,16),end:end.slice(11,16),timeZone:zone}};
  return {...data,title:item.title,notes:item.description,start,end,allDay:item.allDay,timeZone:zone,location:item.location,recurrence:item.recurrence||undefined};
