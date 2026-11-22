@@ -34,6 +34,12 @@ test('organisation isolation, restricted business access, shared budgets, person
   assert.equal((await request(owner.cookie,base+'/data/post','POST',idea)).status,201);
   const output={...idea,id:'launch-output',contentIdea:false,contentOutput:true,parentContentId:idea.id,due:'2026-12-01',discipline:'Social media',priority:'Medium',done:false};
   assert.equal((await request(owner.cookie,base+'/data/task','POST',output)).status,201);
+  assert.equal((await request(owner.cookie,base+'/data/task','POST',{...output,id:'measured-output',performanceIds:['leads']})).status,201);
+  assert.equal((await request(owner.cookie,base+'/data/task','POST',{...output,id:'missing-measure',performanceIds:['missing']})).status,400);
+  assert.equal((await request(owner.cookie,base+'/data/post','POST',{...idea,id:'wrong-measure-company',campaign:'',unitIds:[second.id],performanceIds:['leads']})).status,400);
+  assert.equal((await request(owner.cookie,base+'/data/kpi/leads','DELETE',{version:1})).status,409);
+  assert.equal((await request(outsider.cookie,'organisations/'+otherOrg+'/data/post','POST',{...idea,id:'cross-measure',campaign:'',unitIds:[],performanceIds:['leads']})).status,400);
+  assert.equal((await request(owner.cookie,base+'/data/task/measured-output','DELETE',{version:1})).status,200);
   assert.equal((await request(owner.cookie,base+'/data/task','POST',{...output,id:'launch-email',due:'2026-12-02',discipline:'Email'})).status,201);
   assert.equal((await request(owner.cookie,base+'/data/task/launch-output','PUT',{...output,version:1,due:'2026-12-03'})).status,200);
   assert.equal((await request(owner.cookie,base+'/data/task/launch-email')).body.record.due,'2026-12-02');

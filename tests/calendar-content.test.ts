@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {matchesCalendarContent,emptyCalendarContentFilters as defaults} from '../src/calendarContentFilters.ts';
+const output={channel:'Email',task:{contentOutput:true,campaign:'launch',publicationStatus:'Published manually'}};
+assert.equal(matchesCalendarContent(output,defaults),true);
+assert.equal(matchesCalendarContent({},defaults),true);
+assert.equal(matchesCalendarContent({}, {...defaults,contentOnly:true}),false);
+assert.equal(matchesCalendarContent(output,{...defaults,contentOnly:true,channel:'Email',campaign:'launch',publicationStatus:'Published manually'}),true);
+assert.equal(matchesCalendarContent(output,{...defaults,campaign:'another'}),false);
+assert.equal(matchesCalendarContent({channel:'Email'},{...defaults,channel:'Email'}),true);
+assert.equal(matchesCalendarContent({task:{publicationStatus:'Published manually'}},{...defaults,publicationStatus:'Published manually'}),false);
+console.log('Calendar content filters preserve ordinary items by default and combine selected criteria.');
