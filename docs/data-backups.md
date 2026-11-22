@@ -11,3 +11,5 @@ Included: server database, locally stored integration master keys and encrypted 
 The recovery key is `.data/backup-recovery.key`. Keep a separate secure copy in a password manager or other safe location outside the backup folder. Losing this computer and the only key copy makes encrypted backups unrecoverable. Never commit the key or publish it in chat.
 
 For recovery, stop the application and use `restoreBackup({archive,keyFile,destination})` from `server/backup.mjs` with a **new** destination directory. It refuses to overwrite existing data. Review restored runtime settings locally and configure the server to use the restored database and matching integration keys. Do not upload decrypted recovery files to GitHub.
+
+Authenticator enrolment secrets are encrypted using `mfa-master.key`. Encrypted archives include this key when present; restore it together with the database. Recovery codes are stored only as hashes. Losing the key prevents authenticator verification.

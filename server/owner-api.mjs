@@ -14,7 +14,7 @@ export const platformRoles={
  'Technical Administrator':['technical','audit'],
 };
 // This is a separate identity boundary. Customer roles and cookies never grant staff access.
-export function createOwnerLayer(db,{env=process.env,client=oidc,databasePath}={}){
+export function createOwnerLayer(db,{env=process.env,client=oidc,databasePath,mfa}={}){
  const all=(sql,...a)=>db.prepare(sql).all(...a),one=(sql,...a)=>db.prepare(sql).get(...a),run=(sql,...a)=>db.prepare(sql).run(...a);
  db.exec(`CREATE TABLE IF NOT EXISTS owner_sessions(token TEXT PRIMARY KEY,subject TEXT NOT NULL,authenticated_at INTEGER NOT NULL,expires INTEGER NOT NULL,last_seen INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS owner_flows(state TEXT PRIMARY KEY,browser TEXT NOT NULL,nonce TEXT NOT NULL,verifier TEXT NOT NULL,expires INTEGER NOT NULL);
@@ -77,6 +77,7 @@ export function createOwnerLayer(db,{env=process.env,client=oidc,databasePath}={
    if(!verified||!account){audit('unverified','password-sign-in-denied');fail(401,'Email or password is incorrect, or owner access is not enabled.');}
    // Permissions and the password are checked again after asynchronous password verification.
    const current=localPerson(account.id);if(!current||current.password!==account.password)fail(401,'Please sign in again.');
+   if(mfa?.enabled(account.id))mfa.verify(account.id,body.code);
    const previous=readCookie(req,'theory_owner');if(previous)run('DELETE FROM owner_sessions WHERE token=?',hash(previous));
    run('DELETE FROM owner_sessions WHERE expires<? OR last_seen<?',Date.now(),Date.now()-900000);
    const token=randomBytes(32).toString('hex'),subject='theory:'+account.id;run('INSERT INTO owner_sessions(token,subject,authenticated_at,expires,last_seen,authority,method) VALUES(?,?,?,?,?,?,?)',hash(token),subject,Date.now(),Date.now()+3600000,Date.now(),localAuthority(current),'password');

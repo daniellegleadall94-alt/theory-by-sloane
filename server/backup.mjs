@@ -6,7 +6,7 @@ import {gzip,gunzip} from 'node:zlib';
 import {promisify} from 'node:util';
 const compress=promisify(gzip),expand=promisify(gunzip),magic=Buffer.from('THEORYB1'),limit=128*1024*1024;
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
-const allowed=new Set(['theory.sqlite','ai-master.key','calendar-master.key','runtime-settings.json']);
+const allowed=new Set(['theory.sqlite','ai-master.key','calendar-master.key','mfa-master.key','runtime-settings.json']);
 const inside=(parent,path)=>{const part=relative(resolve(parent),resolve(path));return part!==''&&!part.startsWith('..')&&!isAbsolute(part)};
 function readKey(path){const bytes=readFileSync(path);if(bytes.length!==32)throw Error('The backup recovery key must contain exactly 32 bytes.');return bytes}
 export function initialiseBackupKey(path){const target=resolve(path);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,randomBytes(32),{flag:'wx',mode:0o600});return {path:target,fingerprint:digest(readKey(target)).slice(0,16)}}
@@ -38,7 +38,7 @@ export async function createBackup({databasePath,destination,keyFile,runtimeSett
   writeFileSync(snapshot,Buffer.alloc(0),{flag:'wx',mode:0o600});sourceDb=new DatabaseSync(source,{readOnly:true});await sqliteBackup(sourceDb,snapshot);sourceDb.close();sourceDb=null;
   const tableCounts=databaseEvidence(snapshot),files=[];let total=0;
   const add=(name,bytes)=>{total+=bytes.length;if(total>limit)throw Error('The backup exceeds the current 128 MiB uncompressed limit. Configure a larger-storage backup service before continuing.');files.push({name,sha256:digest(bytes),data:bytes.toString('base64')})};
-  add('theory.sqlite',readFileSync(snapshot));for(const name of ['ai-master.key','calendar-master.key'])if(existsSync(join(parent,name)))add(name,readFileSync(join(parent,name)));
+  add('theory.sqlite',readFileSync(snapshot));for(const name of ['ai-master.key','calendar-master.key','mfa-master.key'])if(existsSync(join(parent,name)))add(name,readFileSync(join(parent,name)));
   const settings=Object.fromEntries(Object.entries(runtimeSettings).filter(([key,value])=>key.startsWith('THEORY_')&&!key.startsWith('THEORY_BACKUP_')&&key!=='THEORY_DATABASE_PATH'&&typeof value==='string'));
   if(Object.keys(settings).length)add('runtime-settings.json',Buffer.from(JSON.stringify(settings)));
   const compressed=await compress(Buffer.from(JSON.stringify({format:1,createdAt,tableCounts,files}))),iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);cipher.setAAD(magic);const encrypted=Buffer.concat([cipher.update(compressed),cipher.final()]);

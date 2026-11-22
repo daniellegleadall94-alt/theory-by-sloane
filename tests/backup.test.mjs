@@ -8,10 +8,12 @@ import {initialiseBackupKey,createBackup,restoreBackup} from '../server/backup.m
 test('encrypted backup restores live WAL data and rejects tampering, wrong keys and overwrite',async()=>{
  const root=mkdtempSync(join(tmpdir(),'theory-backup-test-')),databasePath=join(root,'source.sqlite'),keyFile=join(root,'recovery.key');
  const db=new DatabaseSync(databasePath);db.exec("PRAGMA journal_mode=WAL; CREATE TABLE tasks(id INTEGER PRIMARY KEY,title TEXT); INSERT INTO tasks VALUES(1,'private test task')");
+ writeFileSync(join(root,'mfa-master.key'),Buffer.alloc(32,7));
  initialiseBackupKey(keyFile);
  const result=await createBackup({databasePath,keyFile,destination:join(root,'archives'),retentionDays:30});
  assert.equal(result.verified,true);assert.equal(readFileSync(result.file).includes(Buffer.from('private test task')),false);
  const destination=join(root,'restored');await restoreBackup({archive:result.file,keyFile,destination});
+ assert.deepEqual(readFileSync(join(destination,'mfa-master.key')),Buffer.alloc(32,7));
  const restored=new DatabaseSync(join(destination,'theory.sqlite'));assert.equal(restored.prepare('SELECT title FROM tasks').get().title,'private test task');restored.close();
  await assert.rejects(restoreBackup({archive:result.file,keyFile,destination}),/never overwritten/);
  const wrong=join(root,'wrong.key');initialiseBackupKey(wrong);await assert.rejects(restoreBackup({archive:result.file,keyFile:wrong,destination:join(root,'bad')}),/authentication failed/);

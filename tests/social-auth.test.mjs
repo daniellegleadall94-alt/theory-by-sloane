@@ -1,3 +1,4 @@
+import {generateSync} from 'otplib';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -38,5 +39,10 @@ test('social sign-in validates signed OIDC tokens, binds browser state, links ex
   subject='unlinked-provider';flow=await start(linkedCookie,'link');await request('auth/logout','POST',{},linkedCookie);assert.match((await callback(flow)).location,/expired/);
   // No extra organisation memberships are created for a personal social account.
   assert.equal((await request('organisations','GET',undefined,sessionCookie(repeat))).body.organisations.length,0);
+  const socialCookie=sessionCookie(repeat);const setup=await request('settings/mfa/setup','POST',{},socialCookie);assert.equal(setup.status,200);
+  const secured=await request('settings/mfa/enable','POST',{code:generateSync({secret:setup.body.secret})},socialCookie);assert.equal(secured.status,200);
+  subject='social-one';address='social@signin.test';const challenge=sessionCookie(await callback(await start()));assert.equal((await request('session','GET',undefined,challenge)).body.mfaRequired,true);
+  assert.equal((await request('organisations','GET',undefined,challenge)).status,403);
+  assert.equal((await request('auth/mfa/verify','POST',{code:secured.body.recoveryCodes[0]},challenge)).status,200);
  }finally{await new Promise(resolve=>server.close(resolve));api.close()}
 });
