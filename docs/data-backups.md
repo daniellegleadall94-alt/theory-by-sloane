@@ -1,6 +1,6 @@
 # Private data backups
 
-GitHub contains code, not the live database. Machine-local configuration in `.data/backup-config.json` enables encrypted daily database snapshots while the development or preview server runs. It checks each minute and catches up on the next start. Failures are recorded in `.data/backup-status.json`; a failed backup never advances the last-success time.
+GitHub contains code, not the live database. Machine-local configuration in `.data/backup-config.json` enables encrypted daily database snapshots. On this Windows installation, the limited-user task `Theory Personal Backup` runs daily at 09:00 and at user sign-in, with missed runs attempted when available. It runs hidden and uses `scripts/run-backup.mjs` through `scripts/scheduled-backup.vbs`, a hidden Windows Script Host launcher, independently of the web server. The server also checks each minute and catches up on restart; both skip a backup already successfully created in the last 24 hours. Keep this repository and its Node dependencies at their configured location. Failures are recorded in `.data/backup-status.json`; a failed backup never advances the last-success time.
 
 The configured destination is the Windows-registered **Personal** OneDrive folder, never the generic OneDrive environment variable (which points to Canova Clay on this computer). OneDrive must be running and signed in to upload files; local file creation does not prove cloud upload.
 
@@ -13,3 +13,5 @@ The recovery key is `.data/backup-recovery.key`. Keep a separate secure copy in 
 For recovery, stop the application and use `restoreBackup({archive,keyFile,destination})` from `server/backup.mjs` with a **new** destination directory. It refuses to overwrite existing data. Review restored runtime settings locally and configure the server to use the restored database and matching integration keys. Do not upload decrypted recovery files to GitHub.
 
 Authenticator enrolment secrets are encrypted using `mfa-master.key`. Encrypted archives include this key when present; restore it together with the database. Recovery codes are stored only as hashes. Losing the key prevents authenticator verification.
+
+Run `scripts/check-backup-cloud.ps1` on Windows to read the latest archive’s Cloud Files metadata. It first verifies the registered Personal OneDrive path. `providerReportsInSync: true` means Windows reports the file content in sync with its cloud provider; it does not verify a separate recovery-key copy. Microsoft reference: https://learn.microsoft.com/en-us/windows/win32/api/cfapi/ne-cfapi-cf_placeholder_state.
