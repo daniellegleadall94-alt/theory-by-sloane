@@ -14,11 +14,11 @@ export function exportRecurrence(provider,event){
  if(unit==='weeks'&&!days.includes(day.getUTCDay()))unsupported();
  const monthDay=r.monthDay||day.getUTCDate(),month=r.month||day.getUTCMonth()+1,relative=r.monthlyPattern==='weekday';
  // Google can express clamping with a candidate-day set and BYSETPOS=-1.
- // Keep unsupported Microsoft month-end patterns closed until parity is verified.
- if(provider==='microsoft'&&(unit==='months'||unit==='years')&&!relative&&monthDay>28)unsupported();
+ // Exchange monthly recurrence clamps missing days (MS-OXCICAL 2.1.3.2.2.3.1).
+
  if(relative&&(unit!=='months'||![1,2,3,4,-1].includes(r.ordinal||1)))unsupported();
  if(relative){const nextWeek=new Date(day.getTime()+7*86400000);if(day.getUTCDay()!==(r.weekday??day.getUTCDay())||(r.ordinal===-1?nextWeek.getUTCMonth()===day.getUTCMonth():Math.floor((day.getUTCDate()-1)/7)+1!==(r.ordinal||1)))unsupported()}
- else if((unit==='months'||unit==='years')&&(monthDay!==day.getUTCDate()||unit==='years'&&month!==day.getUTCMonth()+1))unsupported();
+ else if((unit==='months'||unit==='years')&&(Math.min(monthDay,new Date(Date.UTC(day.getUTCFullYear(),day.getUTCMonth()+1,0)).getUTCDate())!==day.getUTCDate()||unit==='years'&&month!==day.getUTCMonth()+1))unsupported();
  let count=r.count;if(count&&r.endDate)count=Math.min(count,eventOccurrences({...event,exceptions:{}},start,r.endDate).length);
  if(count===0)unsupported();
  if(provider==='microsoft'){
@@ -43,7 +43,7 @@ export function importRecurrence(provider,value,start,zone='Europe/London'){
   interval=p.interval||1;unit=({daily:'days',weekly:'weeks',absoluteMonthly:'months',relativeMonthly:'months',absoluteYearly:'years'})[p.type];if(!unit)unsupported();
   if(unit==='weeks'){if(p.firstDayOfWeek&&p.firstDayOfWeek!=='monday')unsupported();days=(p.daysOfWeek||[]).map(d=>week.indexOf(d));if(days.some(d=>d<0))unsupported()}
   if(p.type==='relativeMonthly'){if(p.daysOfWeek?.length!==1)unsupported();weekday=week.indexOf(p.daysOfWeek[0]);ordinal=p.index==='last'?-1:positions.indexOf(p.index)+1;if(weekday<0||!ordinal)unsupported()}
-  monthDay=p.dayOfMonth;month=p.month;if(r.type==='numbered')count=r.numberOfOccurrences;else if(r.type==='endDate')endDate=r.endDate;else if(r.type!=='noEnd')unsupported();
+  monthDay=['absoluteMonthly','absoluteYearly'].includes(p.type)?p.dayOfMonth:undefined;month=p.type==='absoluteYearly'?p.month:undefined;clamped=!!monthDay&&monthDay>28;if(r.type==='numbered')count=r.numberOfOccurrences;else if(r.type==='endDate')endDate=r.endDate;else if(r.type!=='noEnd')unsupported();
  }else{
   if(!Array.isArray(value)||value.length!==1||!value[0].startsWith('RRULE:'))unsupported();
   const entries=value[0].slice(6).split(';').map(field=>field.split('='));if(entries.some(pair=>pair.length!==2)||new Set(entries.map(pair=>pair[0])).size!==entries.length)unsupported();

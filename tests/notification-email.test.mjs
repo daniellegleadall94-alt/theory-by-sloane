@@ -3,6 +3,23 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {createNotificationEmail} from '../server/notification-email.mjs';
 import {notificationReady} from '../server/notification-schedule.mjs';
+
+test('request and workflow sources share the delivery ledger and recheck access before digest retry',async()=>{
+ const db=new DatabaseSync(':memory:');
+ db.exec(`CREATE TABLE users(id TEXT,email TEXT,email_confirmed INTEGER);CREATE TABLE user_settings(user_id TEXT,notifications TEXT);CREATE TABLE user_restrictions(user_id TEXT,suspended INTEGER);CREATE TABLE workspace_records(record_key TEXT);CREATE TABLE planner_notifications(id TEXT,user_id TEXT,record_key TEXT,event_key TEXT,created_at TEXT,read_at TEXT);INSERT INTO users VALUES('u','user@example.test',1);INSERT INTO user_settings VALUES('u','{"channel":"email","frequency":"daily"}');`);
+ let now=1000000,allowed=true,ok=false;const sent=[];
+ const records=new Map(['request:one','workflow:one'].map(id=>[id,{id,user_id:'u',created_at:'2026-01-01',read_at:null}]));
+ const sources=['request:','workflow:'].map(prefix=>({prefix,list:()=>[...records.values()].filter(n=>n.id.startsWith(prefix)),load:id=>records.get(prefix+id),allowed:()=>allowed}));
+ const worker=createNotificationEmail(db,{notificationReady:()=>true},{sources,now:()=>now,env:{THEORY_PUBLIC_URL:'https://theory.example',THEORY_MAIL_PROVIDER:'resend',THEORY_MAIL_API_KEY:'test',THEORY_MAIL_FROM:'test@theory.example'},fetchImpl:async(url,o)=>{sent.push(o);return {ok}}});
+ try{
+  await worker.tick();assert.equal(sent.length,1);assert.match(JSON.parse(sent[0].body).text,/2 unread notifications/);
+  now+=300000;allowed=false;await worker.tick();assert.equal(sent.length,1);
+  assert.equal(db.prepare("SELECT count(*) n FROM notification_email_delivery WHERE status='unconfirmed'").get().n,2);
+  allowed=true;ok=true;records.set('request:two',{id:'request:two',user_id:'u',created_at:'2026-01-02',read_at:null});
+  await worker.tick();assert.equal(sent.length,2);await worker.tick();assert.equal(sent.length,2);
+  assert.ok(!JSON.parse(sent[1].body).text.includes('request:two'));
+ }finally{worker.close();db.close()}
+});
 test('scheduled notifications wait for the next local cutoff, including Monday and daylight saving',()=>{
  const daily={frequency:'daily',time:'08:30',timeZone:'Europe/London'};
  assert.equal(notificationReady(daily,'2026-07-01T07:00:00Z','2026-07-01T07:29:00Z'),false);
@@ -22,7 +39,7 @@ test('daily briefing batches unread notifications once and rechecks access befor
  const workspace={notificationAllowed:()=>allowed,notificationReady:()=>true,notificationType:()=> 'Comments & mentions'};
  let worker=createNotificationEmail(db,workspace,options);
  try{
-  await worker.tick();assert.equal(sent.length,1);assert.match(JSON.parse(sent[0].body).text,/2 unread task notifications/);
+  await worker.tick();assert.equal(sent.length,1);assert.match(JSON.parse(sent[0].body).text,/2 unread notifications/);
   worker.close();worker=createNotificationEmail(db,workspace,options);await worker.tick();assert.equal(sent.length,1);
   db.exec("INSERT INTO planner_notifications VALUES('three','u','r','mention:z','2026-01-01',NULL)");ok=false;await worker.tick();assert.equal(sent.length,2);
   now+=300000;allowed=false;await worker.tick();assert.equal(sent.length,2);assert.equal(db.prepare("SELECT status FROM notification_email_delivery WHERE notification_id='three'").get().status,'unconfirmed');

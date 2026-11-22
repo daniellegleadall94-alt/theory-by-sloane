@@ -153,7 +153,8 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
    fail(404,'Not found.');
   }catch(error){if(!res.writableEnded)send(error.status||500,{error:error.status?error.message:'The server could not complete this request.'})}
  }
- const notificationEmail=createNotificationEmail(db,workspaceLayer,{env:socialOptions?.env||process.env,...recoveryOptions});
+ const notificationSources=[['request:','marketing_request_notifications',requestLayer],['workflow:','workflow_notifications',workflowLayer]].map(([prefix,table,layer])=>({prefix,allowed:layer.canNotify,list:()=>all(`SELECT * FROM ${table} WHERE read_at IS NULL`).map(n=>({...n,id:prefix+n.id})),load:id=>{const n=one(`SELECT * FROM ${table} WHERE id=?`,id);return n?{...n,id:prefix+n.id}:null}}));
+ const notificationEmail=createNotificationEmail(db,workspaceLayer,{sources:notificationSources,env:socialOptions?.env||process.env,...recoveryOptions});
  workspaceLayer.startReminders();calendarConnections.start();notificationEmail.start();
  return {middleware,runNotificationEmails:notificationEmail.tick,flushRecovery:recovery.flush,runReminders:workspaceLayer.runReminders,runStrategyReviews:strategyLayer.runReviews,runWorkflows:workflowLayer.tick,close:()=>{notificationEmail.close();recovery.close();calendarConnections.close();strategyLayer.close();workflowLayer.close();requestLayer.close();workspaceLayer.close();db.close()}};
 }

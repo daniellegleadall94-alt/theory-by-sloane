@@ -29,8 +29,8 @@ export function createWorkflowLayer(db,w,requests){
  const canSource=(id,org,kind,value)=>!!value&&!!member(id,org)&&(kind==='organisation'?w.canUnits(id,org,value.unitIds||[]):kind==='request'?requests.canRead({id},value._row):w.canRead(id,value._row));
  const cleanSource=value=>{if(!value)return null;const {_row,_approval,...data}=value;return data;};
  const emit=(org,trigger,kind,id,key,data={},targetRule=null)=>{const brief=value=>value?Object.fromEntries(['id','status','done','budget','assigneeIds','accountableOwnerId','campaign','unitIds'].filter(k=>value[k]!==undefined).map(k=>[k,value[k]])):undefined;data={before:brief(data.before),after:brief(data.after)};run('INSERT OR IGNORE INTO workflow_events VALUES(?,?,?,?,?,?,?,?,0,?)',randomUUID(),key,org,trigger,kind,id,JSON.stringify(data),now(),targetRule);};
- const notificationAllowed=(id,org)=>{const p=JSON.parse(one('SELECT notifications FROM user_settings WHERE user_id=?',id)?.notifications||'{}');return p.frequency!=='off'&&p.channel!=='email'&&(!p.types||p.types.includes('Workflow automations'))&&(!p.organisationIds?.length||p.organisationIds.includes(org));};
- const notify=(id,org,kind,sourceId,key,title)=>{if(!canSource(id,org,kind,source(org,kind,sourceId)))fail(403,'Notification recipients must already have access to the source.');if(notificationAllowed(id,org))run('INSERT OR IGNORE INTO workflow_notifications VALUES(?,?,?,?,?,?,?,?,NULL)',randomUUID(),id,org,kind,sourceId,key,title,now());};
+ const notificationAllowed=(id,org,channel='in-app')=>{const p=JSON.parse(one('SELECT notifications FROM user_settings WHERE user_id=?',id)?.notifications||'{}');return p.frequency!=='off'&&(channel==='email'||p.channel!=='email')&&(!p.types||p.types.includes('Workflow automations'))&&(!p.organisationIds?.length||p.organisationIds.includes(org));};
+ const notify=(id,org,kind,sourceId,key,title)=>{if(!canSource(id,org,kind,source(org,kind,sourceId)))fail(403,'Notification recipients must already have access to the source.');if(notificationAllowed(id,org,'email'))run('INSERT OR IGNORE INTO workflow_notifications VALUES(?,?,?,?,?,?,?,?,NULL)',randomUUID(),id,org,kind,sourceId,key,title,now());};
  const ruleResult=row=>({...parse(row),id:row.id,version:row.version,executorName:one('SELECT name FROM users WHERE id=?',row.executor_id)?.name||'Former member'});
  const bookResult=row=>({...parse(row),id:row.id,version:row.version});
  const text=(v,label,max=180)=>{if(typeof v!=='string'||!v.trim()||v.length>max)fail(400,'Check '+label+'.');return v.trim();};
@@ -212,5 +212,5 @@ export function createWorkflowLayer(db,w,requests){
   fail(404,'Workflow endpoint not found.');
  }
  const timer=setInterval(()=>{try{tick()}catch{/* Pending durable events are retried by the next worker pass. */}},15000);timer.unref();
- return {handle,tick,close:()=>clearInterval(timer)};
+ return {handle,tick,canNotify:n=>notificationAllowed(n.user_id,n.organisation_id,'email')&&canSource(n.user_id,n.organisation_id,n.source_kind,source(n.organisation_id,n.source_kind,n.source_id)),close:()=>clearInterval(timer)};
 }

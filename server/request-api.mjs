@@ -29,7 +29,7 @@ export function createRequestLayer(db,workspace){
  const notificationType=title=>title.startsWith('New request')?'Marketing requests':title.startsWith('Request assignment')?'Assigned tasks':title.startsWith('Overdue')?'Overdue tasks':'Marketing requests';
  const notify=(row,key,title)=>{
   const d=parse(row),recipients=new Set([row.requester_id,d.requestOwnerId,d.deliveryOwnerId,d.commercialOwnerId,...d.contributorIds,...d.approverIds,...all("SELECT user_id FROM memberships WHERE company_id=? AND role IN ('owner','admin','manager')",row.organisation_id).map(m=>m.user_id)]);
-  for(const id of recipients){if(!id||!access({id},row))continue;const p=pref(id);if(p.frequency==='off'||p.channel==='email'||p.types&&!p.types.includes(notificationType(title))||p.organisationIds?.length&&!p.organisationIds.includes(row.organisation_id))continue;run('INSERT OR IGNORE INTO marketing_request_notifications VALUES(?,?,?,?,?,?,NULL)',randomUUID(),row.id,id,key,title,now());}
+  for(const id of recipients){if(!id||!access({id},row))continue;const p=pref(id);if(p.frequency==='off'||p.types&&!p.types.includes(notificationType(title))||p.organisationIds?.length&&!p.organisationIds.includes(row.organisation_id))continue;run('INSERT OR IGNORE INTO marketing_request_notifications VALUES(?,?,?,?,?,?,NULL)',randomUUID(),row.id,id,key,title,now());}
  };
  const workSummary=(row,user,portal=false)=>linked(row).map(link=>{const r=record(link);if(!r||r.organisation_id!==row.organisation_id)return {id:link.external_id,kind:link.kind,title:'Linked work unavailable',status:'Unavailable',due:'',accessible:false,missing:true};const d=workspace.result(r);return {id:r.external_id,kind:r.kind,title:d.title||d.name,status:r.kind==='task'?(d.done?'Done':d.status||'To do'):d.status||'Planning',due:d.due||d.end||'',accessible:!portal&&!!user&&workspace.canRead(user.id,r)};});
  const result=(row,user,portal=false)=>{
@@ -149,5 +149,5 @@ export function createRequestLayer(db,workspace){
   fail(404,'Request Centre endpoint not found.');
  }
  const timer=setInterval(()=>{try{sync()}catch{/* Preserve pending work for the next worker pass. */}},30000);timer.unref();
- return {handle,ensureForms:seed,notifyUpdate:notify,canRead:access,setWorkflowSink:listener=>{workflowSink=listener},close:()=>clearInterval(timer)};
+ return {handle,canNotify:n=>{const row=one('SELECT * FROM marketing_requests WHERE id=?',n.request_id),p=pref(n.user_id);return !!row&&access({id:n.user_id},row)&&p.frequency!=='off'&&(!p.types||p.types.includes(notificationType(n.title)))&&(!p.organisationIds?.length||p.organisationIds.includes(row.organisation_id))},ensureForms:seed,notifyUpdate:notify,canRead:access,setWorkflowSink:listener=>{workflowSink=listener},close:()=>clearInterval(timer)};
 }

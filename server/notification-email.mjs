@@ -6,20 +6,25 @@ import {createTransactionalMail} from './transactional-mail.mjs';
 export function createNotificationEmail(db,workspace,options={}){
  const mail=createTransactionalMail(options),now=options.now||Date.now;
  db.exec(`CREATE TABLE IF NOT EXISTS notification_email_delivery(notification_id TEXT PRIMARY KEY,first_attempt INTEGER NOT NULL,last_attempt INTEGER NOT NULL,status TEXT NOT NULL);`);
+ const sources=options.sources||[];
+ const load=id=>{const source=sources.find(s=>id.startsWith(s.prefix));return source?source.load(id.slice(source.prefix.length)):db.prepare('SELECT * FROM planner_notifications WHERE id=?').get(id)};
  let running=false,closed=false,timer;
  const eligible=n=>{
     const current=db.prepare('SELECT u.email,u.email_confirmed,s.notifications,COALESCE(r.suspended,0) AS suspended FROM users u JOIN user_settings s ON s.user_id=u.id LEFT JOIN user_restrictions r ON r.user_id=u.id WHERE u.id=?').get(n.user_id);
     if(!current?.email_confirmed||current.suspended)return null;
-    const pref=JSON.parse(current.notifications),row=db.prepare('SELECT * FROM workspace_records WHERE record_key=?').get(n.record_key);
-    if(!['email','both'].includes(pref.channel)||pref.frequency==='off'||!row||!workspace.notificationAllowed(n.user_id,row,workspace.notificationType(n.event_key),'email')||!workspace.notificationReady(n.user_id,n.created_at))return null;
+    const pref=JSON.parse(current.notifications),source=sources.find(s=>n.id.startsWith(s.prefix)),row=source?null:db.prepare('SELECT * FROM workspace_records WHERE record_key=?').get(n.record_key);
+    const allowed=source?source.allowed(n):row&&workspace.notificationAllowed(n.user_id,row,workspace.notificationType(n.event_key),'email');
+    if(!['email','both'].includes(pref.channel)||pref.frequency==='off'||!allowed||!workspace.notificationReady(n.user_id,n.created_at))return null;
 return {...current,pref};
  };
- const digest=createNotificationDigest(db,{mail,eligible,now,closed:()=>closed});
+ const digest=createNotificationDigest(db,{mail,eligible,load,now,closed:()=>closed});
  const tick=async()=>{
   if(running||closed||!mail.configured())return;
   running=true;
   try{
    const rows=db.prepare(`SELECT n.*,u.email,u.email_confirmed,s.notifications FROM planner_notifications n JOIN users u ON u.id=n.user_id JOIN user_settings s ON s.user_id=u.id LEFT JOIN user_restrictions r ON r.user_id=u.id LEFT JOIN notification_email_delivery d ON d.notification_id=n.id WHERE n.read_at IS NULL AND u.email_confirmed=1 AND COALESCE(r.suspended,0)=0 AND (d.status IS NULL OR d.status='retry') ORDER BY n.created_at`).all();
+   for(const source of sources)rows.push(...source.list());
+   rows.sort((a,b)=>a.created_at.localeCompare(b.created_at));
    await digest(rows);
    let attempts=0;
    for(const n of rows){
@@ -34,7 +39,7 @@ return {...current,pref};
     db.prepare("INSERT INTO notification_email_delivery VALUES(?,?,?,'retry') ON CONFLICT(notification_id) DO UPDATE SET last_attempt=excluded.last_attempt").run(n.id,now(),now());
     attempts++;
     try{
-     await mail.send({to:current.email,subject:'You have a Theory notification',id:'theory-notification-'+n.id,text:'You have an unread task notification in Theory. Sign in to view your notifications:\n\n'+mail.origin+'/app\n\nYou can change email reminders in Settings > Notifications.'});
+     await mail.send({to:current.email,subject:'You have a Theory notification',id:'theory-notification-'+n.id,text:'You have an unread notification in Theory. Sign in to view your notifications:\n\n'+mail.origin+'/app\n\nYou can change email reminders in Settings > Notifications.'});
      if(!closed)db.prepare("UPDATE notification_email_delivery SET status='accepted' WHERE notification_id=?").run(n.id);
     }catch{/* Retry without logging recipient addresses or notification content. */}
    }
