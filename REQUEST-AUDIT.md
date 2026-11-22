@@ -98,3 +98,5 @@ Each item is only marked complete after relevant validation. Later requests to r
 - Broader search: signed-in users can search permitted canonical records and shared/owned notes across workspaces, with organisation/company/type filters. Private account results expose title only; file bodies are excluded. Task results reopen the canonical editor; other types offer a short preview and workspace navigation. Permission/filter/note-privacy tests passed. Browser-only notes and external meeting search are not included.
 
 - CSV export now covers filtered contacts/content and individual expenditure allocations, with quoting and spreadsheet formula protection. Contact CSV/XLSX import reuses the existing preview/apply job engine, validates company access and rejects stale jobs. Parent ideas, suppliers and files cannot be deleted while linked. Import regression/build passed.
+
+- Invitation email: optional explicit send action reuses the transactional adapter, validates organisation/recipient/expiry and reports provider acceptance only. Mocked failure and isolation tests plus build passed. No sender/domain is configured and no live email was sent.

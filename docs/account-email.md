@@ -9,3 +9,5 @@ Recovery requests return the same message for known, unknown, suspended and prov
 Delivery failures do not expose recipient existence or provider responses. The affected link is invalidated. This first implementation sends directly with a bounded timeout and does not provide a durable delivery queue, bounce dashboard or email notification digests. Those remain separate work. The local preview does not demonstrate live email deliverability.
 
 Login & Security can send verification to the current address or request a new address. Changes require the current password and confirmation while signed into the same account. The current address is unchanged until confirmation. Tokens bind to the original email and password state; address changes revoke existing sessions. Provider-only address changes remain unsupported.
+
+Organisation invitations can now be emailed explicitly after generating a code. The server binds the recipient to the current invitation and organisation, rate-limits sends and uses an idempotency key. Provider acceptance is not delivery confirmation. Codes remain manually shareable when email is unconfigured or fails.
