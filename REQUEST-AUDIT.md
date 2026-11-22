@@ -116,3 +116,5 @@ Each item is only marked complete after relevant validation. Later requests to r
 - Campaign/project CSV/XLSX import now reuses the established job engine, mapping names, owners, categories, statuses and date ranges. It starts budgets at zero for deliberate allocation and detects same-company/date duplicates. Invalid rows, cross-user jobs and stale previews remain guarded; task/contact/import regression and build passed.
 
 - Workload forecasting: an optional projection reuses recurrence rules for scheduled future instances, count/end limits, month-end clamping and future defaults. It does not create records; opening a forecast edits its real series. Completion-based routines are explicitly excluded and calculation limits are surfaced. Model/regression checks and build passed.
+
+- Financial reporting: date-filtered expenditure reports group exact allocated amounts by company, campaign, channel, supplier or month, with CSV export and separate planned/committed/actual/forecast columns. Shared entries are counted once per group; no banking or tax integration is implied. Allocation/report model tests and build passed.

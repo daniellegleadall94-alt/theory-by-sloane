@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {spendReport} from '../src/spendReportModel.ts';
+import type {SpendEntry} from '../src/budgetModel.ts';
+const entry:SpendEntry={id:'cost',financialEntry:true,title:'Shared artwork',amount:100,currency:'GBP',stage:'Actual',date:'2026-11-01',supplier:'Studio',channel:'Design',unitIds:['a','b'],spendAllocations:[{unitId:'a',campaignId:'launch',amount:60},{unitId:'b',campaignId:'launch',amount:40}]};
+assert.equal(spendReport([entry],[],'campaign')[0].actual,100);
+assert.equal(spendReport([entry],[],'campaign')[0].entries,1);
+assert.equal(spendReport([entry],['a'],'supplier')[0].actual,60);
+assert.equal(spendReport([entry],[],'company').length,2);
+assert.equal(spendReport([entry],[],'month','2026-12-01').length,0);
+assert.equal(spendReport([{...entry,archived:true}],[],'month').length,0);
+const commitment={...entry,id:'commitment',stage:'Committed' as const},planned={...entry,id:'planned',stage:'Planned' as const};
+assert.equal(spendReport([entry,commitment,planned],[],'channel')[0].forecast,200);
+assert.equal(spendReport([entry,commitment,planned],[],'channel')[0].planned,100);
+console.log('Financial reports preserve exact splits, period scope and separate planned/committed/actual totals.');
