@@ -1,0 +1,35 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {createCompanyApi} from '../server/company-api.mjs';
+test('asset stages reuse approvals, enforce order/current access, and never carry approval to a new version',async()=>{
+ const api=createCompanyApi({databasePath:':memory:'}),server=createServer(api.middleware);await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
+ const request=async(cookie,path,method='GET',body)=>{const r=await fetch(origin+'/api/'+path,{method,headers:{Origin:origin,'Content-Type':'application/json',Cookie:cookie||''},body:body?JSON.stringify(body):undefined});return {status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0]}};
+ const register=(email,extra)=>request('','auth/register','POST',{name:email,email,password:'Asset test password 2026',...extra});
+ try{
+  const owner=await register('owner@assets.test',{companyName:'Creative company'}),other=await register('other@assets.test',{companyName:'Other company'}),org=owner.body.user.company.id,base='organisations/'+org;
+  const invite=await request(owner.cookie,'company-invitations','POST',{email:'reviewer@assets.test'}),reviewer=await register('reviewer@assets.test',{invite:invite.body.code});
+  const file={id:'creative',title:'Launch artwork',mime:'image/png',filename:'art.png',content:'aW1hZ2U=',unitIds:[]};assert.equal((await request(owner.cookie,base+'/data/file','POST',file)).status,201);
+  const proof=base+'/files/creative/proof';assert.equal((await request(other.cookie,proof)).status,404);
+  const start=await request(owner.cookie,proof+'/start','POST',{version:1,stages:[{name:'Creative',approverId:owner.body.user.id},{name:'Final',approverId:reviewer.body.user.id}]});assert.equal(start.status,201);const runId=start.body.id;
+  assert.equal((await request(reviewer.cookie,proof+'/decision','POST',{version:1,runId,outcome:'Granted',reason:''})).status,403);
+  assert.equal((await request(owner.cookie,proof+'/comment','POST',{version:1,text:'Adjust this crop',x:1.2,y:0.5})).status,400);
+  assert.equal((await request(reviewer.cookie,proof+'/comment','POST',{version:1,text:'Review this area',x:.2,y:.3})).status,201);
+  assert.equal((await request(owner.cookie,proof+'/decision','POST',{version:1,runId,outcome:'Granted',reason:'Creative checked'})).status,200);
+  const stages=(await request(owner.cookie,proof)).body.reviews[0].stages;assert.equal(stages[1].decision.status,'Pending');const notices=(await request(reviewer.cookie,'workflows/notifications')).body.notifications;assert.ok(notices.some(n=>n.fileId==='creative'));assert.equal((await request(other.cookie,'workflows/notifications')).body.notifications.length,0);
+  assert.equal((await request(reviewer.cookie,'workflows/approvals?organisationId='+org,'PUT',{id:stages[1].decision.id,outcome:'Granted',reason:''})).status,403);
+  assert.equal((await request(reviewer.cookie,proof+'/decision','POST',{version:1,runId,outcome:'Granted',reason:'Final checked'})).status,200);
+  assert.equal((await request(owner.cookie,proof)).body.reviews[0].status,'Approved');
+  assert.equal((await request(owner.cookie,base+'/data/file/creative','PUT',{...file,title:'Revised artwork',version:1})).status,200);
+  const revised=(await request(owner.cookie,proof)).body;assert.equal(revised.reviews[0].stale,true);assert.equal(revised.reviews[0].status,'Earlier version');assert.equal(revised.comments[0].source_version,1);
+  assert.equal((await request(owner.cookie,proof+'/decision','POST',{version:2,runId,outcome:'Granted',reason:''})).status,409);
+  assert.equal((await request(owner.cookie,proof+'/start','POST',{version:2,stages:[{name:'New review',approverId:other.body.user.id}]})).status,400);
+  assert.equal((await request(owner.cookie,proof+'/start','POST',{version:2,stages:[{name:'New review',approverId:owner.body.user.id}]})).status,201);
+  const pending=(await request(owner.cookie,proof)).body.reviews.find(r=>r.source_version===2);
+  assert.equal((await request(other.cookie,proof+'/cancel','POST',{version:2,runId:pending.id})).status,404);
+  assert.equal((await request(owner.cookie,proof+'/cancel','POST',{version:2,runId:pending.id})).status,200);
+  assert.equal((await request(owner.cookie,proof+'/decision','POST',{version:2,runId:pending.id,outcome:'Granted',reason:''})).status,409);
+  assert.equal((await request(owner.cookie,proof)).body.reviews.find(r=>r.id===pending.id).status,'Cancelled');
+  assert.equal((await request(owner.cookie,proof+'/start','POST',{version:2,stages:[{name:'Replacement review',approverId:owner.body.user.id}]})).status,201);
+ }finally{await new Promise(r=>server.close(r));api.close()}
+});

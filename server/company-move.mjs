@@ -25,6 +25,7 @@ export function createCompanyMoves(db,workspace,{audit}={}){
   for(const row of [...records,...groups])if(one('SELECT record_key FROM workspace_records WHERE scope=? AND kind=? AND external_id=?','org:'+target,row.kind,row.external_id)){blockers.push('A record with the same identifier already exists in the destination.');break}
   const targetMembers=all('SELECT * FROM memberships WHERE company_id=? ORDER BY user_id',target),targetIds=new Set(targetMembers.map(member=>member.user_id)),sourceMembers=all('SELECT * FROM memberships WHERE company_id=? ORDER BY user_id',source);
   const requiredPeople=new Set([...people(JSON.parse(unit.settings||'{}')),...[...records,...groups].flatMap(row=>[row.owner_id,...people(JSON.parse(row.data)),...all('SELECT user_id FROM record_assignments WHERE record_key=?',row.record_key).map(a=>a.user_id)])]);
+  if(exists('asset_review_runs'))for(const row of records)for(const review of all('SELECT stages FROM asset_review_runs WHERE record_key=?',row.record_key))for(const stage of JSON.parse(review.stages))requiredPeople.add(stage.approverId);
   const notes=all('SELECT * FROM notes WHERE company_id=? ORDER BY id',source).filter(note=>JSON.parse(note.data).unitIds?.includes(unitId));
   if(notes.some(note=>JSON.parse(note.data).unitIds.some(id=>id!==unitId)))blockers.push('Some notes belong to multiple companies. Separate those associations before moving.');
   for(const note of notes)requiredPeople.add(note.owner_id);
