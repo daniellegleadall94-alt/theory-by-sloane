@@ -9,6 +9,8 @@ export function importDate(value,format){
  if(match&&['DMY','MDY'].includes(format)){const result=`${match[3]}-${(format==='DMY'?match[2]:match[1]).padStart(2,'0')}-${(format==='DMY'?match[1]:match[2]).padStart(2,'0')}`;if(validTaskDate(result))return result;}
  throw Error('Use a valid date matching the selected format.');
 }
+const contactFields=['title','description','contactType','companyName','jobTitle','email','phone','website'];
+const contactFingerprint=c=>JSON.stringify([c.title.trim().toLowerCase(),c.email.toLowerCase(),c.companyName.trim().toLowerCase()]);
 const fingerprint=t=>JSON.stringify([t.title.trim().toLowerCase(),t.campaign||'',t.due||'',t.accountableOwnerId||t.assigneeIds?.[0]||'']);
 export function createTaskImportLayer(db,workspace){
  const one=(sql,...args)=>db.prepare(sql).get(...args),all=(sql,...args)=>db.prepare(sql).all(...args),run=(sql,...args)=>db.prepare(sql).run(...args),fail=(status,message)=>{throw Object.assign(Error(message),{status})};
@@ -28,15 +30,20 @@ export function createTaskImportLayer(db,workspace){
   const match=path.match(/^\/api\/imports\/([^/]+)\/(preview|apply)$/);if(!match||req.method!=='POST')fail(404,'Import endpoint not found.');
   const row=one('SELECT * FROM import_jobs WHERE id=? AND user_id=?',match[1],user.id);if(!row)fail(404,'Import expired or was not found.');const job=JSON.parse(row.data),body=await bodyOf(req);if(job.completed)fail(409,'This import has already finished.');
   if(match[2]==='preview'){
+   const recordKind=body.recordKind||'task';if(!['task','contact'].includes(recordKind))fail(400,'Choose tasks or contacts.');const fields=recordKind==='contact'?contactFields:importFields,keyOf=recordKind==='contact'?contactFingerprint:fingerprint;
    const org=body.organisationId||null;if(org!==null&&typeof org!=='string')fail(400,'Choose a valid organisation.');authorise(user.id,org);const sheet=job.sheets[body.sheet||0];if(!sheet)fail(400,'Choose a worksheet.');
-   if(!body.mapping||Object.keys(body.mapping).some(k=>!importFields.includes(k))||Object.values(body.mapping).some(i=>!Number.isInteger(i)||i<0||i>=sheet.headers.length)||!Number.isInteger(body.mapping.title))fail(400,'Map the task name and valid columns.');
-   const units=workspace.validateUnits(user.id,org,body.unitIds||[]);if(org&&workspace.authorisedUnits(user.id,org,false).length&&!units.length&&body.confirmOrganisationWide!==true)fail(400,'Choose brands or confirm organisation-wide tasks.');
+   if(!body.mapping||Object.keys(body.mapping).some(k=>!fields.includes(k))||Object.values(body.mapping).some(i=>!Number.isInteger(i)||i<0||i>=sheet.headers.length)||!Number.isInteger(body.mapping.title))fail(400,'Map the name and valid columns.');
+   const units=workspace.validateUnits(user.id,org,body.unitIds||[]);if(org&&workspace.authorisedUnits(user.id,org,false).length&&!units.length&&body.confirmOrganisationWide!==true)fail(400,'Choose companies or confirm organisation-wide records.');
    const members=org?all('SELECT users.id,users.name,users.email FROM memberships JOIN users ON users.id=memberships.user_id WHERE memberships.company_id=?',org):[user];
-   const campaigns=workspace.permittedRows(user.id,org,'campaign').map(workspace.result),existing=new Set(workspace.permittedRows(user.id,org,'task').map(r=>fingerprint(workspace.result(r)))),seen=new Set();
+   const campaigns=workspace.permittedRows(user.id,org,'campaign').map(workspace.result),existing=new Set(workspace.permittedRows(user.id,org,recordKind).filter(r=>recordKind!=='contact'||workspace.result(r).contactDirectory).map(r=>keyOf(workspace.result(r)))),seen=new Set();
    const records=sheet.rows.map((values,i)=>{
     const valuesFor=key=>String(values[body.mapping[key]]??'').trim();let task={id:randomUUID(),title:valuesFor('title'),description:valuesFor('description'),due:'',done:false,status:'To do',priority:'Medium',campaign:'',discipline:valuesFor('discipline')||'Marketing',channel:valuesFor('channel'),unitIds:units,assigneeIds:[user.id],accountableOwnerId:user.id,plannerAllocated:true};
     try{
      if(Object.values(body.mapping).some(column=>/^\[(Formula:|Unsupported cell)/.test(String(values[column]||''))))throw Error('Replace formula or unsupported cells with plain values.');
+     if(recordKind==='contact'){
+      task={id:task.id,contactDirectory:true,title:valuesFor('title'),description:valuesFor('description'),contactType:valuesFor('contactType')||'Contact',companyName:valuesFor('companyName'),jobTitle:valuesFor('jobTitle'),email:valuesFor('email'),phone:valuesFor('phone'),website:valuesFor('website'),status:'Active',unitIds:units};
+      workspace.validateData(task,'contact',org,user.id,null);const key=keyOf(task),duplicate=existing.has(key)||seen.has(key);seen.add(key);return {row:sheet.rowNumbers?.[i]||i+2,task,duplicate,error:''};
+     }
      for(const field of ['start','plannedDate','due','publicationDate']){const value=valuesFor(field);if(value)task[field]=importDate(value,body.dateFormat||'ISO');}
      const owner=valuesFor('owner');if(owner){const matches=members.filter(m=>[m.id,m.email,m.name].some(v=>v?.toLowerCase()===owner.toLowerCase()));if(matches.length!==1)throw Error('Owner must uniquely match a member name, email or ID in this workspace.');task.accountableOwnerId=matches[0].id;task.assigneeIds=[matches[0].id]}
      const campaign=valuesFor('campaign');if(campaign){const matches=campaigns.filter(c=>c.id===campaign||c.name?.toLowerCase()===campaign.toLowerCase());if(matches.length!==1)throw Error('Campaign must uniquely match an accessible campaign in this workspace.');task.campaign=matches[0].id}
@@ -48,12 +55,12 @@ export function createTaskImportLayer(db,workspace){
      return {row:sheet.rowNumbers?.[i]||i+2,task,duplicate,error:''};
     }catch(e){return {row:sheet.rowNumbers?.[i]||i+2,task,error:e.message,duplicate:false}}
    });
-   job.preview={org,records,snapshot:snapshot(user.id,org),allowDuplicates:body.allowDuplicates===true};run('UPDATE import_jobs SET data=? WHERE id=?',JSON.stringify(job),row.id);
+   job.preview={org,recordKind,records,snapshot:snapshot(user.id,org),allowDuplicates:body.allowDuplicates===true};run('UPDATE import_jobs SET data=? WHERE id=?',JSON.stringify(job),row.id);
    return send(200,{records:records.map(r=>({row:r.row,title:r.task.title,owner:members.find(m=>m.id===r.task.accountableOwnerId)?.name||'',due:r.task.due,plannedDate:r.task.plannedDate,duplicate:r.duplicate,error:r.error})),valid:records.filter(r=>!r.error&&(!r.duplicate||job.preview.allowDuplicates)).length,errors:records.filter(r=>r.error).length,duplicates:records.filter(r=>r.duplicate).length});
   }
   if(!job.preview)fail(400,'Preview this import first.');if(body.confirm!==true)fail(400,'Confirm the import.');const preview=job.preview;authorise(user.id,preview.org);
   if(preview.records.some(r=>r.error)&&body.confirmValidOnly!==true)fail(400,'Fix validation errors or explicitly import valid rows only.');
-  const count=workspace.transaction(()=>{if(preview.snapshot!==snapshot(user.id,preview.org))fail(409,'Workspace records changed. Preview again before importing.');let count=0;for(const r of preview.records){if(r.error||r.duplicate&&!preview.allowDuplicates)continue;workspace.save(user.id,preview.org,'task',r.task.id,r.task,null);count++;}job.completed=true;delete job.sheets;run('UPDATE import_jobs SET data=? WHERE id=?',JSON.stringify(job),row.id);return count});
+  const count=workspace.transaction(()=>{if(preview.snapshot!==snapshot(user.id,preview.org))fail(409,'Workspace records changed. Preview again before importing.');let count=0;for(const r of preview.records){if(r.error||r.duplicate&&!preview.allowDuplicates)continue;workspace.save(user.id,preview.org,preview.recordKind||'task',r.task.id,r.task,null);count++;}job.completed=true;delete job.sheets;run('UPDATE import_jobs SET data=? WHERE id=?',JSON.stringify(job),row.id);return count});
   return send(200,{imported:count,skipped:preview.records.length-count,errors:preview.records.filter(r=>r.error).map(r=>({row:r.row,error:r.error}))});
  }
  return {handle};

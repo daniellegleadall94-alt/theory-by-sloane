@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {csvText} from '../src/recordExport.ts';
+const output=csvText(['Name','Notes'],[['A, B','He said "yes"\nNext line'],['=HYPERLINK("bad")','  +SUM(A1)'],['Normal',42],['@external','\tformula']]);
+assert.ok(output.startsWith('\uFEFF"Name","Notes"\r\n'));
+assert.ok(output.includes('"A, B","He said ""yes""\nNext line"'));
+assert.ok(output.includes('"\'=HYPERLINK(""bad"")"'));
+assert.ok(output.includes('"\'  +SUM(A1)"'));
+assert.ok(output.includes('"\'@external","\'\tformula"'));
+assert.ok(output.includes('"Normal","42"'));
+console.log('CSV quoting, Unicode marker, multiline values and spreadsheet formula protection passed.');

@@ -101,6 +101,8 @@ test('organisation isolation, restricted business access, shared budgets, person
   assert.equal((await request(owner.cookie,'personal/data/task','POST',personal)).status,201);
   assert.equal((await request(member.cookie,'personal/data/task/private-task')).status,404);
   const ownTasks=(await request(owner.cookie,'my-work')).body.tasks;assert.equal(ownTasks.length,4);assert.ok(!ownTasks.some(t=>t.id==='first-task'&&t.organisationId===org));
+  assert.equal((await request(owner.cookie,base+'/data/post/launch-idea','DELETE',{version:1})).status,409);
+  assert.equal((await request(owner.cookie,base+'/data/contact/studio','DELETE',{version:3})).status,409);
   const searchOwner=await request(owner.cookie,'search?q=launch');assert.equal(searchOwner.status,200);assert.ok(searchOwner.body.results.some(r=>r.id==='launch-idea'));
   assert.equal((await request(outsider.cookie,'search?q=launch')).body.results.length,0);
   assert.ok((await request(owner.cookie,'search?q=launch&kind=task')).body.results.every(r=>r.kind==='task'));

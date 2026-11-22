@@ -87,6 +87,14 @@ test('CSV/XLSX import maps, validates, previews, reports duplicates and errors, 
   const task=(await request(cookie,root+'/data/task')).body.records[0];assert.equal(task.title,'Imported launch');assert.equal(task.due,'2026-11-05');assert.equal(task.plannedDate,'2026-11-02');assert.deepEqual(task.unitIds,[brand.id]);assert.equal(task.effortHours,4);
   assert.equal((await request(cookie,`imports/${job.body.id}/apply`,'POST',{confirm:true,confirmValidOnly:true})).status,409);
   job=await upload('again.csv',csv);preview=await request(cookie,`imports/${job.body.id}/preview`,'POST',config);assert.equal(preview.body.valid,0);assert.equal((await request(cookie,root+'/data/task')).body.records[0].version,task.version);
+  const contacts=await upload('contacts.csv','Name,Email,Company,Type\nStudio,studio@example.com,Studio Ltd,Supplier\nInvalid,bad,,Contact\nStudio,studio@example.com,Studio Ltd,Supplier');
+  const contactConfig={recordKind:'contact',organisationId:org,unitIds:[brand.id],mapping:{title:0,email:1,companyName:2,contactType:3}};
+  const contactPreview=await request(cookie,'imports/'+contacts.body.id+'/preview','POST',contactConfig);assert.equal(contactPreview.body.valid,1);assert.equal(contactPreview.body.errors,1);assert.equal(contactPreview.body.duplicates,1);
+  assert.equal((await request(cookie,'imports/'+contacts.body.id+'/apply','POST',{confirm:true,confirmValidOnly:true})).body.imported,1);
+  const importedContact=(await request(cookie,root+'/data/contact')).body.records[0];assert.equal(importedContact.contactType,'Supplier');assert.deepEqual(importedContact.unitIds,[brand.id]);
+  const repeatedContacts=await upload('contacts-again.csv','Name,Email,Company,Type\nStudio,studio@example.com,Studio Ltd,Supplier');
+  assert.equal((await request(cookie,'imports/'+repeatedContacts.body.id+'/preview','POST',contactConfig)).body.duplicates,1);
+  await request(cookie,'imports/'+repeatedContacts.body.id,'DELETE');
   const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Work');sheet.addRow(['Task','Due','Hours']);sheet.addRow(['Excel task',new Date('2026-11-09T00:00:00Z'),2]);sheet.getCell('B2').numFmt='yyyy-mm-dd';sheet.addRow(['Formula date',{formula:'TODAY()'},1]);
   const xlsx=await upload('work.xlsx',await book.xlsx.writeBuffer());assert.equal(xlsx.status,201,JSON.stringify(xlsx.body));assert.equal(xlsx.body.sheets[0].rows[0][1],'2026-11-09');
   preview=await request(cookie,`imports/${xlsx.body.id}/preview`,'POST',{organisationId:org,unitIds:[brand.id],mapping:{title:0,due:1,effortHours:2}});assert.equal(preview.body.valid,1);assert.equal(preview.body.errors,1);
