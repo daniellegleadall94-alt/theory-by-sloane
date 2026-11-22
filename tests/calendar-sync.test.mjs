@@ -9,6 +9,7 @@ import {randomBytes,createCipheriv} from 'node:crypto';
 import {createCompanyApi} from '../server/company-api.mjs';
 import {externalSyncItem,localSyncItem,applyExternalItem,providerPayload} from '../server/calendar-sync-model.mjs';
 import {exportRecurrence,importRecurrence} from '../server/calendar-recurrence.mjs';
+import {completeTask} from '../src/work.ts';
 import {eventOccurrences} from '../src/calendarModel.ts';
 
 test('native event repeat patterns retain weekday, interval, count and local daylight-saving schedule',()=>{
@@ -22,7 +23,7 @@ test('native event repeat patterns retain weekday, interval, count and local day
  const clamped={start:'2027-02-28',end:'2027-02-28',allDay:true,recurrence:{mode:'monthly',monthDay:31,interval:1,days:[],count:3}};for(const provider of ['microsoft','google'])assert.equal(importRecurrence(provider,exportRecurrence(provider,clamped),clamped.start).monthDay,31);
  assert.equal(importRecurrence('microsoft',{pattern:{type:'daily',interval:1,dayOfMonth:0,month:0},range:{type:'noEnd',startDate:'2026-01-01'}},'2026-01-01').unit,'days');
  assert.throws(()=>importRecurrence('google',['RRULE:FREQ=MONTHLY;BYMONTHDAY=28,31;BYSETPOS=-1'],'2026-01-31'),/without changing/);
- assert.throws(()=>applyExternalItem('task',{title:'Keep me'},{recurrence:{mode:'weekly'}}),/original task has been retained/);
+ assert.throws(()=>applyExternalItem('task',{title:'Keep me',occurrenceOf:'series'},{recurrence:{mode:'weekly'}}),/history cannot be changed/);
  assert.throws(()=>importRecurrence('google',['RRULE:FREQ=MONTHLY;BYMONTHDAY=31'],'2026-01-31'),/without changing/);
 });
 
@@ -32,7 +33,7 @@ test('calendar sync retains all-day boundaries, London summer times, description
  const timed=localSyncItem(row,{...task,calendarTime:{start:'09:00',end:'10:00',timeZone:'Europe/London'}});assert.equal(timed.start,'2026-07-01T08:00:00.000Z');
  const remote=externalSyncItem('google',{...providerPayload('google',timed),id:'one',organizer:{self:true}});
  const restored=applyExternalItem('task',task,remote);assert.equal(restored.calendarTime.start,'09:00');assert.equal(restored.description,'Details');assert.equal(restored.title,'Launch');
- assert.throws(()=>localSyncItem(row,{...task,recurrence:{mode:'daily'}}),/series/);
+ assert.equal(localSyncItem(row,{...task,recurrence:{mode:'daily'}}).recurrence,null);
 });
 
 for(const provider of ['microsoft','google'])test(provider+' two-way mapping, imports, conflicts, permissions, deletion confirmation and disconnect',async()=>{
@@ -121,6 +122,53 @@ for(const provider of ['microsoft','google'])test(provider+' two-way mapping, im
   edited=(await req(owner.cookie,'personal/data/event/native-series','PUT',{...edited,exceptions:{...edited.exceptions,'2026-12-08':{cancelled:true}}})).body.record;await req(owner.cookie,endpoint,'POST',{});
   const occurrence=(await req(owner.cookie,endpoint)).body.items.find(i=>i.occurrence);assert.ok(occurrence);assert.ok(events.has(instance.id));
   assert.equal((await req(owner.cookie,endpoint+'/'+occurrence.id,'POST',{action:'delete-both',confirm:true,version:occurrence.version})).status,200);assert.ok(!events.has(instance.id));assert.ok(events.has(series.id));
-  await req(owner.cookie,'calendar/connections/account','DELETE');assert.equal((await req(owner.cookie,'personal/data/task')).body.records.length,1);assert.equal(db.prepare('SELECT count(*) n FROM calendar_sync_links').get().n,0);
+
+  // A task's remaining series advances while completed work remains a separate ticked event.
+  const routine=(await req(owner.cookie,'personal/data/task','POST',{id:'routine',title:'Daily routine',due:'2026-12-01',done:false,recurrence:{mode:'daily',interval:1,unit:'days',days:[],count:3}})).body.record;
+  await req(owner.cookie,endpoint,'POST',{});
+  const routineLink=db.prepare("SELECT l.* FROM calendar_sync_links l JOIN workspace_records r ON r.record_key=l.record_key WHERE r.external_id='routine'").get();assert.equal(routineLink.error,'');assert.ok(events.get(routineLink.external_id).recurrence);
+  const completion=await req(owner.cookie,'personal/data/task/routine/actions','POST',{version:routine.version,action:'complete'});assert.equal(completion.status,200,JSON.stringify(completion.body));
+  await req(owner.cookie,endpoint,'POST',{});const active=events.get(routineLink.external_id);assert.equal(google?active.start.date:active.start.dateTime.slice(0,10),'2026-12-02');assert.equal(google?active.recurrence[0].includes('COUNT=2'):active.recurrence.range.numberOfOccurrences===2,true);
+  const historyTask=completion.body.records.find(t=>t.occurrenceOf==='routine');assert.ok(historyTask);const historyLink=db.prepare('SELECT l.* FROM calendar_sync_links l JOIN workspace_records r ON r.record_key=l.record_key WHERE r.external_id=?').get(historyTask.id);assert.equal(historyLink.error,'');assert.equal(google?events.get(historyLink.external_id).summary:events.get(historyLink.external_id).subject,'✓ Daily routine');
+  const oldHistory=events.get(historyLink.external_id);events.set(oldHistory.id,stamp(oldHistory.id,{...oldHistory,...(google?{summary:'Rewrite history'}:{subject:'Rewrite history'})}));await req(owner.cookie,endpoint,'POST',{});
+  assert.equal((await req(owner.cookie,'personal/data/task/'+historyTask.id)).body.record.title,'Daily routine');assert.equal(google?events.get(oldHistory.id).summary:events.get(oldHistory.id).subject,'✓ Daily routine');
+  const incomingRule=providerPayload(provider,localSyncItem({kind:'task'},{title:'External routine',due:'2026-12-10',done:false,recurrence:{mode:'daily',interval:2,unit:'days',days:[],count:4}}));events.set('incoming-series',stamp('incoming-series',incomingRule));await req(owner.cookie,endpoint,'POST',{});
+  const incomingTask=(await req(owner.cookie,'personal/data/task')).body.records.find(t=>t.title==='External routine');assert.ok(incomingTask);assert.equal(incomingTask.plannerAllocated,false);assert.equal(incomingTask.recurrence.count,4);assert.equal(incomingTask.recurrence.interval,2);
+
+  let occurrenceTask=(await req(owner.cookie,'personal/data/task','POST',{id:'task-exceptions',title:'Weekly task',due:'2026-12-01',done:false,recurrence:{mode:'weekly',interval:1,unit:'weeks',days:[2],count:3},recurrenceOverrides:{'2026-12-08':{title:'Only this task',start:'2026-12-08',due:'2026-12-08'}}})).body.record;
+  assert.ok(occurrenceTask);await req(owner.cookie,endpoint,'POST',{});
+  const taskSeriesLink=db.prepare("SELECT l.* FROM calendar_sync_links l JOIN workspace_records r ON r.record_key=l.record_key WHERE r.external_id='task-exceptions'").get();assert.equal(taskSeriesLink.error,'');
+  let taskInstance=[...events.values()].find(e=>(e.recurringEventId||e.seriesMasterId)===taskSeriesLink.external_id);assert.ok(taskInstance);assert.equal(google?taskInstance.summary:taskInstance.subject,'Only this task');
+  taskInstance=stamp(taskInstance.id,{...taskInstance,...(google?{summary:'Moved future task',start:{date:'2026-12-09'},end:{date:'2026-12-10'}}:{subject:'Moved future task',start:{dateTime:'2026-12-09T00:00:00'},end:{dateTime:'2026-12-10T00:00:00'}})});events.set(taskInstance.id,taskInstance);await req(owner.cookie,endpoint,'POST',{});
+  occurrenceTask=(await req(owner.cookie,'personal/data/task/task-exceptions')).body.record;assert.equal(occurrenceTask.title,'Weekly task');assert.equal(occurrenceTask.recurrenceOverrides['2026-12-08'].due,'2026-12-09');
+  const occurrenceAdvance=await req(owner.cookie,'personal/data/task/task-exceptions/actions','POST',{version:occurrenceTask.version,action:'complete'});assert.equal(occurrenceAdvance.status,200,JSON.stringify(occurrenceAdvance.body));
+  const moved=occurrenceAdvance.body.records.find(t=>t.id==='task-exceptions');assert.equal(moved.due,'2026-12-09');assert.equal(moved.title,'Moved future task');assert.equal(moved.scheduledDue,'2026-12-08');
+  await req(owner.cookie,endpoint,'POST',{});assert.equal(db.prepare('SELECT error FROM calendar_sync_links WHERE id=?').get(taskSeriesLink.id).error,'');
+  const finalAdvance=await req(owner.cookie,'personal/data/task/task-exceptions/actions','POST',{version:moved.version,action:'complete'});assert.equal(finalAdvance.status,200,JSON.stringify(finalAdvance.body));const normal=finalAdvance.body.records.find(t=>t.id==='task-exceptions');assert.equal(normal.due,'2026-12-15');assert.equal(normal.title,'Weekly task');
+
+  const cancellable=(await req(owner.cookie,'personal/data/task','POST',{id:'cancel-occurrence',title:'Cancel one',due:'2026-12-08',done:false,recurrence:{mode:'weekly',interval:1,unit:'weeks',days:[2],count:2}})).body.record;assert.ok(cancellable);await req(owner.cookie,endpoint,'POST',{});
+  const cancelLink=db.prepare("SELECT l.* FROM calendar_sync_links l JOIN workspace_records r ON r.record_key=l.record_key WHERE r.external_id='cancel-occurrence'").get();
+  const cancelledInstance=stamp('cancel-instance',google?{recurringEventId:cancelLink.external_id,originalStartTime:{date:'2026-12-08'},status:'cancelled'}:{seriesMasterId:cancelLink.external_id,originalStart:'2026-12-08T00:00:00Z',isCancelled:true});events.set(cancelledInstance.id,cancelledInstance);
+  await req(owner.cookie,endpoint,'POST',{});const pendingOccurrence=(await req(owner.cookie,endpoint)).body.items.find(i=>i.id===cancelLink.id+'~2026-12-08');assert.equal(pendingOccurrence?.pending,'remote-deleted');
+  const confirmed=await req(owner.cookie,endpoint+'/'+pendingOccurrence.id,'POST',{action:'delete-both',confirm:true,version:pendingOccurrence.version});assert.equal(confirmed.status,200,JSON.stringify(confirmed.body));
+  const afterCancel=(await req(owner.cookie,'personal/data/task/cancel-occurrence')).body.record;assert.equal(afterCancel.due,'2026-12-15');
+  await req(owner.cookie,endpoint,'POST',{});assert.equal(db.prepare('SELECT error FROM calendar_sync_links WHERE id=?').get(cancelLink.id).error,'');
+  const skipped=(await req(owner.cookie,'personal/data/task')).body.records.find(t=>t.occurrenceOf==='cancel-occurrence');assert.equal(skipped.skipped,true);assert.equal(db.prepare('SELECT l.id FROM calendar_sync_links l JOIN workspace_records r ON r.record_key=l.record_key WHERE r.external_id=?').get(skipped.id),undefined);
+  const taskCount=(await req(owner.cookie,'personal/data/task')).body.records.length;
+  await req(owner.cookie,'calendar/connections/account','DELETE');assert.equal((await req(owner.cookie,'personal/data/task')).body.records.length,taskCount);assert.equal(db.prepare('SELECT count(*) n FROM calendar_sync_links').get().n,0);
  }finally{await new Promise(resolve=>server.close(resolve));api.close();db.close();rmSync(dir,{recursive:true,force:true})}
+});
+
+test('task series retain remaining counts, month-end anchors and immutable completed dates',()=>{
+ const task={id:'monthly',title:'Month end',due:'2028-01-31',done:false,recurrence:{mode:'monthly',interval:1,unit:'months',days:[],count:3}};
+ const advanced=completeTask([task],task.id,'2028-01-31T12:00:00Z');
+ for(const provider of ['microsoft','google']){
+  const item=localSyncItem({kind:'task'},advanced[0]);assert.equal(item.recurrence.count,2);assert.equal(item.recurrence.monthDay,31);
+  const payload=providerPayload(provider,item);const restored=importRecurrence(provider,payload.recurrence,'2028-02-29');
+  assert.deepEqual(eventOccurrences({start:'2028-02-29',end:'2028-02-29',allDay:true,recurrence:restored},'2028-01-01','2028-12-31').map(e=>e.start),['2028-02-29','2028-03-31']);
+ }
+ assert.equal(localSyncItem({kind:'task'},advanced[1]).start,'2028-01-31');assert.equal(localSyncItem({kind:'task'},advanced[1]).recurrence,null);
+ assert.equal(localSyncItem({kind:'task'},{...task,seriesDefaults:{title:'Normal'}}).title,'Normal');
+ assert.throws(()=>localSyncItem({kind:'task'},{...task,start:'2028-01-30'}),/Multi-day/);
+ assert.equal(localSyncItem({kind:'task'},{...task,recurrence:{...task.recurrence,basis:'completion'}}).recurrence,null);
 });

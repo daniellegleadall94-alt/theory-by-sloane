@@ -12,3 +12,10 @@ assert.equal(forecastRecurringWork([{...task,recurrence:{...task.recurrence!,pau
 const monthly=forecastRecurringWork([{...task,due:'2026-01-31',recurrence:{...task.recurrence!,mode:'monthly',unit:'months'}}],'2026-03-31');assert.deepEqual(monthly.tasks.map(t=>t.due),['2026-01-31','2026-02-28','2026-03-31']);
 assert.equal(forecastRecurringWork([{...task,seriesDefaults:{effortHours:5,accountableOwnerId:'bea'}}],'2026-11-04').tasks[1].effortHours,5);
 console.log('Read-only recurrence forecasts respect counts, month ends, paused/completion-based rules and future defaults.');
+
+const oneOff={...task,start:'2026-11-01',due:'2026-11-04',scheduledDue:'2026-11-02',seriesDefaults:{start:'2026-11-02',due:'2026-11-02',calendarTime:null}};
+const restored=forecastRecurringWork([oneOff],'2026-11-30').tasks;
+assert.equal(restored[1].due,'2026-11-03');assert.equal(restored[1].start,'2026-11-03');assert.equal(restored[1].calendarTime,null);
+
+const exceptions=forecastRecurringWork([{...task,recurrence:{...task.recurrence!,count:4},recurrenceOverrides:{'2026-11-03':{cancelled:true},'2026-11-04':{title:'Moved forecast',start:'2026-11-06',due:'2026-11-06'}}}],'2026-11-30').tasks;
+assert.deepEqual(exceptions.map(t=>t.due),['2026-11-02','2026-11-06','2026-11-05']);assert.equal(exceptions[1].title,'Moved forecast');

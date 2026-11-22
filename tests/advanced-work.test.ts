@@ -29,3 +29,18 @@ assert.equal(rescheduled[0].due,'2026-11-30');assert.equal(rescheduled[0].title,
 const paused=completeTask([{...task,recurrence:r({mode:'daily',paused:true})}],task.id,'2026-10-24T12:00:00Z');assert.equal(paused[1].occurrenceOf,task.id);assert.equal(paused[0].recurrence?.paused,true);
 const ended=completeTask([{...task,recurrence:r({mode:'daily',count:1})}],task.id,'2026-10-24T12:00:00Z');assert.equal(ended[0].occurrenceOf,task.id);assert.deepEqual(completeTask(ended,task.id,'2026-10-25T12:00:00Z'),ended);
 console.log('Advanced recurrence, DST, completion history and theme readability checks passed');
+
+assert.equal(nextOccurrence('2026-11-22',r({mode:'daily',interval:3})),'2026-11-25');
+assert.equal(nextOccurrence('2026-01-31',r({mode:'monthly',interval:2})),'2026-03-31');
+assert.equal(nextOccurrence('2028-02-29',r({mode:'annually',interval:4})),'2032-02-29');
+const resized:Task={...task,start:'2026-11-01',due:'2026-11-05',scheduledDue:'2026-10-31',calendarTime:{start:'15:00',end:'16:00',timeZone:'Europe/London'},recurrence:r({mode:'monthly',anchor:'2026-10-31'}),seriesDefaults:{start:'2026-10-30',due:'2026-10-31',calendarTime:null}};
+const resizedNext=completeTask([resized],resized.id,'2026-11-05T18:00:00Z');
+assert.equal(resizedNext[0].start,'2026-11-29');assert.equal(resizedNext[0].due,'2026-11-30');assert.equal(resizedNext[0].calendarTime,null);
+assert.equal(resizedNext[1].start,'2026-11-01');assert.equal(resizedNext[1].calendarTime?.start,'15:00');
+
+const future:Task={...task,due:'2026-12-01',recurrence:r({mode:'daily',count:4}),recurrenceOverrides:{'2026-12-02':{cancelled:true},'2026-12-03':{title:'One future change',due:'2026-12-05',start:'2026-12-05'}}};
+const nextFuture=completeTask([future],future.id,'2026-12-01T12:00:00Z');assert.equal(nextFuture[0].due,'2026-12-05');assert.equal(nextFuture[0].scheduledDue,'2026-12-03');assert.equal(nextFuture[0].recurrence?.completed,2);assert.equal(nextFuture[0].title,'One future change');
+const afterFuture=completeTask(nextFuture,future.id,'2026-12-05T12:00:00Z');assert.equal(afterFuture[0].due,'2026-12-04');assert.equal(afterFuture[0].title,task.title);assert.equal(afterFuture[0].recurrence?.completed,3);
+
+const movedMonth={...task,due:'2027-02-03',scheduledDue:'2027-01-31',recurrence:r({mode:'monthly'}),seriesDefaults:{due:'2027-01-31',start:''}};
+assert.equal(completeTask([movedMonth],task.id,'2027-02-03T12:00:00Z')[0].due,'2027-02-28');

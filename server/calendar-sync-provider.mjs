@@ -15,7 +15,7 @@ export function calendarSyncProvider(account,request){
    const details=await call(eventsUrl(calendar)+'/'+encodeURIComponent(event.id)+'?$select=id,exceptionOccurrences,cancelledOccurrences&$expand=exceptionOccurrences');
    if(details['exceptionOccurrences@odata.nextLink'])throw Error('This series has too many exceptions to synchronise safely.');
    const result=[];if((details.exceptionOccurrences?.length||0)+(details.cancelledOccurrences?.length||0)>1000)throw Error('This series has too many exceptions to synchronise safely.');
-   for(const value of details.exceptionOccurrences||[]){const item=await this.get(calendar,value.id);if(!item)throw Error('An occurrence changed while syncing. Try again.');result.push({date:occurrenceDate(account.provider,item,master),event:item})}
+   for(const value of details.exceptionOccurrences||[]){const item=await this.get(calendar,value.id);if(item&&item.seriesMasterId!==event.id)throw Error('The provider returned an occurrence from a different series.');if(!item)throw Error('An occurrence changed while syncing. Try again.');result.push({date:occurrenceDate(account.provider,item,master),event:item})}
    for(const id of details.cancelledOccurrences||[]){const prefix='OID.'+event.id+'.',date=id.startsWith(prefix)?id.slice(prefix.length):'';if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw Error('The provider returned an unknown cancelled occurrence identifier.');result.push({date,event:{id,isCancelled:true}})}
    return result;
   },
@@ -24,7 +24,7 @@ export function calendarSyncProvider(account,request){
    let url=base+'?'+params;const matches=[];
    for(let page=0;url;page++){
     if(page>10)throw Error('Too many recurring instances returned.');const parsed=new URL(url);if(parsed.origin!==new URL(base).origin||parsed.pathname!==new URL(base).pathname)throw Error('Unexpected recurrence page.');
-    const data=await call(url);for(const item of google?data.items||[]:data.value||[])if(occurrenceDate(account.provider,item,master)===date)matches.push(item);
+    const data=await call(url);for(const item of google?data.items||[]:data.value||[]){if((google?item.recurringEventId:item.seriesMasterId)!==masterId)throw Error('The provider returned an occurrence from a different series.');if(occurrenceDate(account.provider,item,master)===date)matches.push(item);}
     if(google&&data.nextPageToken){parsed.searchParams.set('pageToken',data.nextPageToken);url=parsed.href}else url=google?null:data['@odata.nextLink'];
    }
    if(matches.length!==1)throw Error('The original recurring instance could not be identified uniquely.');return matches[0];

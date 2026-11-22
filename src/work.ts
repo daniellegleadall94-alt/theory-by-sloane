@@ -2,7 +2,8 @@ import type {CustomField} from './customFields.ts';
 export type Recurrence={mode:'none'|'daily'|'weekdays'|'weekly'|'monthly'|'annually'|'custom';interval:number;unit:'days'|'weeks'|'months'|'years';days:number[];anchor?:string;startDate?:string;endDate?:string;count?:number;completed?:number;basis?:'scheduled'|'completion';paused?:boolean;monthDay?:number;month?:number;ordinal?:number;weekday?:number;monthlyPattern?:'date'|'weekday';timeZone?:string};
 export type WorkGroup={unitIds?:string[];id:string;name:string;parentId:string;order?:number;archived?:boolean;colour?:string;icon?:string;visibility?:'private'|'shared';sharedWith?:string[];ownerId?:string;version?:number};
 export type Task=PlannerFields&{unitIds?:string[];organisationId?:string|null;assigneeIds?:string[];ownerId?:string;version?:number;organisationName?:string;campaignName?:string;id:string;title:string;campaign:string;discipline:string;due:string;priority:string;done:boolean;groupId?:string;recurrence?:Recurrence;occurrenceOf?:string;completedAt?:string;overviewId?:string;horizon?:string;start?:string;plannerAllocated?:boolean;status?:'To do'|'In progress'|'In review'|'Done';channel?:string;brand?:string;checklist?:{id:string;title:string;done:boolean}[]};
-export type PlannerFields={contentOutput?:boolean;publicationStatus?:string;calendarTime?:{start:string;end:string;timeZone:string};strategyLink?:string;parentTaskId?:string;followerIds?:string[];actualHours?:number;customFields?:CustomField[];deadlineLocked?:boolean;effortHours?:number;publicationDate?:string;dependencyIds?:string[];archived?:boolean;milestone?:boolean;completedBy?:string;completedByName?:string;scheduledDue?:string;description?:string;important?:boolean;plannedDate?:string;myDay?:string;myDayUserIds?:Record<string,string>;reminderAt?:string;reminderTimeZone?:string;accountableOwnerId?:string;contributorIds?:string[];createdAt?:string;order?:number;comments?:{id:string;mentionIds?:string[];text:string;userId:string;name:string;at:string}[];attachments?:{id:string;name:string;url:string}[];skipped?:boolean;seriesDefaults?:Partial<Task>;visibility?:'private'|'shared';sharedWith?:string[]};
+export type TaskOccurrenceChange={title?:string;description?:string;start?:string;due?:string;calendarTime?:{start:string;end:string;timeZone:string}|null;location?:string;cancelled?:boolean};
+export type PlannerFields={location?:string;recurrenceOverrides?:Record<string,TaskOccurrenceChange>;contentOutput?:boolean;publicationStatus?:string;calendarTime?:{start:string;end:string;timeZone:string}|null;strategyLink?:string;parentTaskId?:string;followerIds?:string[];actualHours?:number;customFields?:CustomField[];deadlineLocked?:boolean;effortHours?:number;publicationDate?:string;dependencyIds?:string[];archived?:boolean;milestone?:boolean;completedBy?:string;completedByName?:string;scheduledDue?:string;description?:string;important?:boolean;plannedDate?:string;myDay?:string;myDayUserIds?:Record<string,string>;reminderAt?:string;reminderTimeZone?:string;accountableOwnerId?:string;contributorIds?:string[];createdAt?:string;order?:number;comments?:{id:string;mentionIds?:string[];text:string;userId:string;name:string;at:string}[];attachments?:{id:string;name:string;url:string}[];skipped?:boolean;seriesDefaults?:Partial<Task>;visibility?:'private'|'shared';sharedWith?:string[]};
 export const noRecurrence:Recurrence={mode:'none',interval:1,unit:'days',days:[]};
 const parse=(s:string)=>new Date(s+'T12:00:00Z');
 const iso=(d:Date)=>d.toISOString().slice(0,10);
@@ -12,7 +13,7 @@ function nextDate(due:string,r:Recurrence):string|null{
  if(!validTaskDate(due))return null;
  if(r.mode==='none'||r.paused)return null;
  const step=Math.min(365,Math.max(1,Math.floor(r.interval||1)));
- if(r.mode==='daily')return shift(due,1);
+ if(r.mode==='daily')return shift(due,step);
  if(r.mode==='weekdays'){let result=shift(due,1);while([0,6].includes(parse(result).getUTCDay()))result=shift(result,1);return result}
  if(r.mode==='weekly'||r.mode==='custom'&&r.unit==='weeks'&&r.days.length){
   const anchor=r.anchor||due;const start=parse(anchor);start.setUTCDate(start.getUTCDate()-((start.getUTCDay()+6)%7));
@@ -20,7 +21,7 @@ function nextDate(due:string,r:Recurrence):string|null{
   for(let n=1;n<=step*7+7;n++){const result=shift(due,n);const d=parse(result);const week=Math.floor((d.getTime()-start.getTime())/604800000);if(week%step===0&&days.includes(d.getUTCDay()))return result}
  }
  const unit=r.mode==='monthly'?'months':r.mode==='annually'?'years':r.unit;
- const n=r.mode==='custom'?step:1;
+ const n=step;
  if(unit==='days'||unit==='weeks')return shift(due,n*(unit==='weeks'?7:1));
  const d=parse(due),anchor=parse(r.anchor||due);
  const month=d.getUTCMonth()+(unit==='years'?n*12:n);
@@ -52,19 +53,36 @@ export function recurrenceLabel(r?:Recurrence):string{
  if(r.mode==='custom')return `Every ${r.interval} ${r.interval===1?r.unit.slice(0,-1):r.unit}`;
  return ({daily:'Daily',weekdays:'Weekdays',monthly:'Monthly',annually:'Annually'})[r.mode];
 }
+export function taskSeriesDefaults(task:Task):Partial<Task>{
+ const base={...task,...task.seriesDefaults};
+ const keys=['title','description','priority','checklist','channel','discipline','campaign','groupId','unitIds','assigneeIds','accountableOwnerId','contributorIds','brand','important','overviewId','effortHours','location'] as const;
+ return {...Object.fromEntries(keys.filter(key=>base[key]!==undefined).map(key=>[key,base[key]])),start:base.start||'',due:base.due,calendarTime:base.calendarTime||null};
+}
+export function scheduledTaskOccurrence(task:Task,due:string):Task{
+ const base={...task,...task.seriesDefaults,...recurringTaskDates(task,due),seriesDefaults:undefined,scheduledDue:undefined};
+ const change=task.recurrenceOverrides?.[due];
+ return change&&!change.cancelled?{...base,...change,scheduledDue:due,seriesDefaults:taskSeriesDefaults(base)}:base;
+}
+/** Future dates use the series span, not a one-off occurrence's resized span. */
+export function recurringTaskDates(task:Task,due:string){
+ const base={...task,...task.seriesDefaults};
+ const duration=base.start&&validTaskDate(base.start)&&validTaskDate(base.due)?Math.max(0,Math.round((parse(base.due).getTime()-parse(base.start).getTime())/86400000)):0;
+ return {due,start:base.start?shift(due,-duration):undefined};
+}
 export function completeTask(tasks:Task[],id:string,at:string):Task[]{
  let task=tasks.find(t=>t.id===id);if(!task||task.occurrenceOf)return tasks;
  if(!task.done&&task.recurrence&&task.recurrence.mode!=='none'){
-  const r={...task.recurrence,anchor:task.recurrence.anchor||task.due};
-  const basis=r.basis==='completion'?localDay(at,r.timeZone):task.scheduledDue||task.due;const next=nextOccurrence(basis,{...r,paused:false});
-  const history={...task,id:crypto.randomUUID(),done:true,status:'Done' as const,recurrence:undefined,seriesDefaults:undefined,occurrenceOf:task.id,completedAt:at};
-  if(next){const duration=task.start?Math.max(0,Math.round((parse(task.due).getTime()-parse(task.start).getTime())/86400000)):0;
-   const offset=Math.round((parse(next).getTime()-parse(task.due).getTime())/86400000);
+  const r={...task.recurrence,anchor:task.recurrence.anchor||task.scheduledDue||task.due};
+  const basis=r.basis==='completion'?localDay(at,r.timeZone):task.scheduledDue||task.due;let next=nextOccurrence(basis,{...r,paused:false});
+  while(next&&task.recurrenceOverrides?.[next]?.cancelled){r.completed=(r.completed||0)+1;next=nextOccurrence(next,{...r,paused:false});}
+  const history={...task,id:crypto.randomUUID(),done:true,status:'Done' as const,recurrence:undefined,seriesDefaults:undefined,recurrenceOverrides:undefined,occurrenceOf:task.id,completedAt:at};
+  if(next){
+   const offset=Math.round((parse(scheduledTaskOccurrence(task,next).due).getTime()-parse(task.due).getTime())/86400000);
    const reminder=task.reminderAt?new Date(Date.parse(task.reminderAt)+offset*86400000):undefined;
    if(reminder&&task.reminderTimeZone){const zone=task.reminderTimeZone;const old=new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(task.reminderAt!));try{task={...task,reminderAt:reminderInstant(localDay(reminder.toISOString(),zone)+'T'+old,zone)}}catch{task={...task,reminderAt:undefined}}}
    else task={...task,reminderAt:reminder?.toISOString()};
-   const current:Task=task;const defaults=task.seriesDefaults||{};
-   return [...tasks.map(t=>t.id===id?{...current,...defaults,id:t.id,due:next,scheduledDue:undefined,start:current.start?shift(next,-duration):undefined,plannedDate:undefined,myDay:undefined,myDayUserIds:{},done:false,completedAt:undefined,status:'To do' as const,checklist:(defaults.checklist||t.checklist)?.map(item=>({...item,done:false})),recurrence:{...r,completed:(r.completed||0)+1},seriesDefaults:undefined}:t),history];
+   const current:Task=task;const defaults=task.seriesDefaults||{};const occurrence=scheduledTaskOccurrence(task,next);
+   return [...tasks.map(t=>t.id===id?{...current,...defaults,...occurrence,id:t.id,plannedDate:undefined,myDay:undefined,myDayUserIds:{},done:false,completedAt:undefined,status:'To do' as const,checklist:(defaults.checklist||t.checklist)?.map(item=>({...item,done:false})),recurrence:{...r,completed:(r.completed||0)+1},recurrenceOverrides:Object.fromEntries(Object.entries(current.recurrenceOverrides||{}).filter(([date])=>date>next!))}:t),history];
   }
   return [...tasks.filter(t=>t.id!==id),{...history,id:task.id,occurrenceOf:task.id,recurrence:undefined}];
  }

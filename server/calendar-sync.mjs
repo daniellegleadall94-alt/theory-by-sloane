@@ -1,3 +1,4 @@
+import {taskSeriesDefaults} from '../src/work.ts';
 import {createOccurrenceSync} from './calendar-occurrence-sync.mjs';
 import {createCalendarSubscriptions} from './calendar-subscriptions.mjs';
 import {randomUUID} from 'node:crypto';
@@ -31,7 +32,12 @@ export function createCalendarSync(db,workspace,{request,origin,refreshCalendars
  const occurrences=createOccurrenceSync(db,workspace,{itemFor,history,alive,now});
  const saveRemote=(account,row,item)=>{
   if(!accessible(account,row))fail(403,'You no longer have permission to edit this Theory item.');if(row.organisation_id)workspace.assertWritable(row.organisation_id);
-  const data=workspace.result(row),next=applyExternalItem(row.kind,data,item,data.calendarTime?.timeZone||data.timeZone||'Europe/London');
+  const data=workspace.result(row),zone=data.calendarTime?.timeZone||data.timeZone||'Europe/London';
+  let next;
+  if(row.kind==='task'&&data.seriesDefaults){
+   const master=itemFor(account,row);if(item.start!==master.start||item.end!==master.end)fail(409,'The series dates changed while this task has an individual edit. Review the series and occurrence dates before syncing.');
+   const base={...data,...data.seriesDefaults,seriesDefaults:undefined,scheduledDue:undefined};next=applyExternalItem(row.kind,base,item,zone);next={...data,recurrence:next.recurrence,seriesDefaults:taskSeriesDefaults(next)};
+  }else next=applyExternalItem(row.kind,data,item,zone);
   return workspace.transaction(()=>workspace.save(account.user_id,row.organisation_id,row.kind,row.external_id,next,row,{preserveComments:true}));
  };
  async function reconcile(account,settings,provider,link,remoteRaw){
@@ -40,6 +46,7 @@ export function createCalendarSync(db,workspace,{request,origin,refreshCalendars
   if(!accessible(account,row||previous)){run("UPDATE calendar_sync_links SET error='Theory access changed. Synchronisation is paused for this item.' WHERE id=?",link.id);return}
   if(!row){run("UPDATE calendar_sync_links SET pending='local-deleted',remote_revision=?,error='' WHERE id=?",remoteRaw?.etag||remoteRaw?.['@odata.etag']||null,link.id);return}
   if(row.organisation_id)workspace.assertWritable(row.organisation_id);
+  if(row.kind==='task'&&JSON.parse(row.data).skipped){run("UPDATE calendar_sync_links SET pending='local-deleted',error='' WHERE id=?",link.id);return;}
   let local=itemFor(account,row),remote=remoteRaw?externalSyncItem(account.provider,remoteRaw):null;
   if(link.external_id&&(!remote||remote.deleted)){run("UPDATE calendar_sync_links SET pending='remote-deleted',error='' WHERE id=?",link.id);return}
   if(link.pending)return;
@@ -52,6 +59,10 @@ export function createCalendarSync(db,workspace,{request,origin,refreshCalendars
   if(remote.attendeeCount||!remote.isOrganiser){run("UPDATE calendar_sync_links SET error='This item has attendees or another organiser. Use the meeting editor to confirm updates.' WHERE id=?",link.id);return}
   const localChanged=syncFingerprint(local)!==link.local_hash,remoteChanged=syncFingerprint(remote)!==link.remote_hash;
   if(!localChanged&&!remoteChanged){remember(link,row,local,remote);return}
+  if(row.kind==='task'&&JSON.parse(row.data).occurrenceOf){
+   history(account,row,'Completed task history retained',remote);
+   const updated=await provider.update(settings.calendar_id,remote.id,local,remote.revision);alive();remember(link,row,local,externalSyncItem(account.provider,updated));return;
+  }
   if(localChanged&&remoteChanged&&link.local_version){
    const remoteAt=Date.parse(remote.updatedAt),localAt=Date.parse(row.updated_at);
    if(!Number.isFinite(remoteAt))fail(409,'Both copies changed and the provider supplied no edit time. Resolve this item before syncing.');
@@ -67,17 +78,17 @@ export function createCalendarSync(db,workspace,{request,origin,refreshCalendars
    await subscriptions.ensure(account,settings.calendar_id).catch(()=>{});alive();const provider=calendarSyncProvider(account,request),listing=await provider.list(settings.calendar_id,settings.cursor);alive();
    workspace.transaction(()=>{if(listing.full)run('DELETE FROM calendar_sync_remote_cache WHERE account_id=?',account.id);for(const item of listing.items)run('INSERT INTO calendar_sync_remote_cache VALUES(?,?,?) ON CONFLICT(account_id,event_id) DO UPDATE SET data=excluded.data',account.id,item.id,JSON.stringify(item))});
    const known=all('SELECT data FROM calendar_sync_remote_cache WHERE account_id=?',account.id).map(row=>JSON.parse(row.data)),remote=new Map(known.map(item=>[item.id,item])),links=all('SELECT * FROM calendar_sync_links WHERE account_id=?',account.id);
-   const candidates=all("SELECT * FROM workspace_records WHERE kind IN ('task','event') AND (personal_user_id=? OR owner_id=? OR EXISTS(SELECT 1 FROM record_assignments WHERE record_key=workspace_records.record_key AND user_id=?))",account.user_id,account.user_id,account.user_id).filter(row=>{const data=JSON.parse(row.data);return accessible(account,row)&&!data.archived&&(row.kind==='task'?!!data.due:!!data.calendarEvent)});
+   const candidates=all("SELECT * FROM workspace_records WHERE kind IN ('task','event') AND (personal_user_id=? OR owner_id=? OR EXISTS(SELECT 1 FROM record_assignments WHERE record_key=workspace_records.record_key AND user_id=?))",account.user_id,account.user_id,account.user_id).filter(row=>{const data=JSON.parse(row.data);return accessible(account,row)&&!data.archived&&!data.skipped&&(row.kind==='task'?!!data.due:!!data.calendarEvent)});
    for(const row of candidates)if(!links.some(link=>link.record_key===row.record_key))links.push(createLink(account,row));
    for(const link of links){
     try{
      let event=link.external_id?remote.get(link.external_id):listing.items.find(event=>event.transactionId===link.identity||event.id===link.identity);
      if(link.external_id&&!event)event=await provider.get(settings.calendar_id,link.external_id);alive();
-     if(event&&rowFor(link.record_key)?.kind!=='event')await provider.checkSeries(settings.calendar_id,event,known);alive();
+
      if(event&&!link.external_id){run('UPDATE calendar_sync_links SET external_id=? WHERE id=?',event.id,link.id);link.external_id=event.id}
      await reconcile(account,settings,provider,link,event);alive();
      const fresh=one('SELECT * FROM calendar_sync_links WHERE id=?',link.id),current=rowFor(link.record_key);
-     if(fresh&&!fresh.pending&&!fresh.error&&current?.kind==='event'&&JSON.parse(current.data).recurrence?.mode&&JSON.parse(current.data).recurrence.mode!=='none'){
+     if(fresh&&!fresh.pending&&!fresh.error&&current&&JSON.parse(current.data).recurrence?.mode&&JSON.parse(current.data).recurrence.mode!=='none'){
       const master=await provider.get(settings.calendar_id,fresh.external_id);alive();if(master)await occurrences.sync(account,settings,provider,fresh,master,known);
      }
     }catch(error){alive();run('UPDATE calendar_sync_links SET error=? WHERE id=?',String(error.message).slice(0,500),link.id)}
@@ -85,7 +96,8 @@ export function createCalendarSync(db,workspace,{request,origin,refreshCalendars
    for(const event of listing.items){
     if(one('SELECT id FROM calendar_sync_links WHERE account_id=? AND external_id=?',account.id,event.id))continue;
     let item;try{item=externalSyncItem(account.provider,event)}catch{continue}
-    if(item.deleted||item.attendeeCount||!item.isOrganiser||item.recurrence)continue;
+    if(item.deleted||item.attendeeCount||!item.isOrganiser)continue;
+    if(item.recurrence){try{applyExternalItem('task',{},item)}catch{continue}}
     workspace.transaction(()=>{
      const data=applyExternalItem('task',{title:item.title,due:'',done:false,status:'To do',priority:'Medium',campaign:'',discipline:'',channel:'',plannerAllocated:false,unitIds:[],assigneeIds:[account.user_id]},item);
      const row=workspace.save(account.user_id,null,'task',randomUUID(),data,null),link=createLink(account,row,item.id);remember(link,row,itemFor(account,row),item);

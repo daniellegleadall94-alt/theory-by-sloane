@@ -25,6 +25,12 @@ test('dependencies, private views, mentions, activity, capacity and atomic bulk 
   assert.equal((await request(cookie,root+'/data/task/b/actions','POST',{version:b.version,action:'complete'})).status,200);
   const recurring=await make('recurring',{recurrence:{mode:'daily',interval:1,unit:'days',days:[]}});
   assert.equal((await request(cookie,root+'/data/task','POST',{id:'bad-recurring',title:'Bad recurring dependency',due:'',dependencyIds:[recurring.id]})).status,400);
+  assert.equal((await request(cookie,root+'/data/task/recurring','PUT',{...recurring,seriesDefaults:{done:true}})).status,400);
+  assert.equal((await request(cookie,root+'/data/task/recurring','PUT',{...recurring,seriesDefaults:{calendarTime:{start:'bad',end:'bad',timeZone:'Europe/London'}}})).status,400);
+  assert.equal((await request(cookie,root+'/data/task/recurring','PUT',{...recurring,recurrenceOverrides:{'2026-11-03':{assigneeIds:[memberId]}}})).status,400);
+  assert.equal((await request(cookie,root+'/data/task/recurring','PUT',{...recurring,recurrenceOverrides:{'bad-date':{title:'Invalid'}}})).status,400);
+  const single=await make('single-resize',{start:'2026-11-01',due:'2026-11-05',scheduledDue:'2026-11-02',calendarTime:{start:'14:00',end:'15:00',timeZone:'Europe/London'},recurrence:{mode:'daily',interval:1,unit:'days',days:[]},seriesDefaults:{start:'2026-11-02',due:'2026-11-02',calendarTime:null}});
+  const advanced=await request(cookie,root+'/data/task/single-resize/actions','POST',{version:single.version,action:'complete'});assert.equal(advanced.status,200,JSON.stringify(advanced.body));const nextSingle=advanced.body.records.find(t=>t.id===single.id);assert.equal(nextSingle.start,'2026-11-03');assert.equal(nextSingle.due,'2026-11-03');assert.equal(nextSingle.calendarTime,null);
   const duplicate=await request(cookie,root+'/data/task/recurring/actions','POST',{version:recurring.version,action:'duplicate'});assert.equal(duplicate.status,200);assert.notEqual(duplicate.body.records[0].id,recurring.id);assert.equal(duplicate.body.records[0].recurrence,undefined);assert.equal(duplicate.body.records[0].done,false);
   const privateTask=await make('private',{visibility:'private',assigneeIds:[owner.body.user.id]});
   assert.equal((await request(cookie,root+'/data/task/private','PUT',{...privateTask,comments:[{id:'private-mention',text:'Do not expose this',mentionIds:[memberId]}]})).status,400);
