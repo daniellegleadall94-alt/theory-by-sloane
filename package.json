@@ -14,6 +14,7 @@
     "lucide-react": "^0.468.0",
     "openid-client": "^6.8.8",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "6.5.438",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "unzipper": "^0.12.3"

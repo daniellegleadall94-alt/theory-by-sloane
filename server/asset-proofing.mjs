@@ -1,3 +1,4 @@
+import {PDFDocument} from 'pdf-lib';
 import {randomUUID} from 'node:crypto';
 export function createAssetProofing(db,w,{audit}){
  const one=(s,...a)=>db.prepare(s).get(...a),all=(s,...a)=>db.prepare(s).all(...a),run=(s,...a)=>db.prepare(s).run(...a),fail=(status,message)=>{throw Object.assign(Error(message),{status})},now=()=>new Date().toISOString();
@@ -35,7 +36,8 @@ export function createAssetProofing(db,w,{audit}){
   if(action==='comment'){
    if(typeof body.text!=='string'||!body.text.trim()||body.text.length>4000)fail(400,'Enter a comment up to 4,000 characters.');
    if(body.page!==undefined&&(!Number.isInteger(body.page)||body.page<1||body.page>1000))fail(400,'Choose a valid page number.');
-   if((body.x!==undefined||body.y!==undefined)&&(!Number.isFinite(body.x)||!Number.isFinite(body.y)||body.x<0||body.x>1||body.y<0||body.y>1))fail(400,'Choose a point inside the image.');
+   if((body.x!==undefined||body.y!==undefined)&&(!Number.isFinite(body.x)||!Number.isFinite(body.y)||body.x<0||body.x>1||body.y<0||body.y>1))fail(400,'Choose a point inside the image or PDF page.');
+   if(data.mime==='application/pdf'&&(body.x!==undefined||body.page!==undefined)){if(!body.page)fail(400,'Choose a PDF page for this pin.');let count;try{count=(await PDFDocument.load(Buffer.from(data.content,'base64'))).getPageCount()}catch{fail(400,'This PDF cannot be read. Upload a valid, unencrypted PDF before adding page comments.')}if(body.page>count)fail(400,'Choose a page that exists in this PDF.');const current=one('SELECT * FROM workspace_records WHERE record_key=?',file.record_key);if(!current||current.version!==file.version||!w.canRead(user.id,current))fail(409,'The file or your access changed. Reopen the review.');w.assertWritable(org)}
    run('INSERT INTO asset_review_comments VALUES(?,?,?,?,?,?,?,?,?)',randomUUID(),file.record_key,file.version,user.id,body.text.trim(),body.page||null,body.x??null,body.y??null,now());audit(user.id,org,'Asset review comment: '+id+' version '+file.version);return send(201,{ok:true});
   }
   fail(404,'Review action not found.');

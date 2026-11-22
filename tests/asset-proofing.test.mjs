@@ -1,3 +1,4 @@
+import {PDFDocument} from 'pdf-lib';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -31,5 +32,10 @@ test('asset stages reuse approvals, enforce order/current access, and never carr
   assert.equal((await request(owner.cookie,proof+'/decision','POST',{version:2,runId:pending.id,outcome:'Granted',reason:''})).status,409);
   assert.equal((await request(owner.cookie,proof)).body.reviews.find(r=>r.id===pending.id).status,'Cancelled');
   assert.equal((await request(owner.cookie,proof+'/start','POST',{version:2,stages:[{name:'Replacement review',approverId:owner.body.user.id}]})).status,201);
+  const pdf=await PDFDocument.create();pdf.addPage();pdf.addPage();const pdfFile={...file,id:'pdf',mime:'application/pdf',filename:'review.pdf',content:Buffer.from(await pdf.save()).toString('base64')};assert.equal((await request(owner.cookie,base+'/data/file','POST',pdfFile)).status,201);const pdfProof=base+'/files/pdf/proof';
+  assert.equal((await request(reviewer.cookie,pdfProof+'/comment','POST',{version:1,text:'Move this heading',page:2,x:.2,y:.4})).status,201);
+  assert.equal((await request(reviewer.cookie,pdfProof+'/comment','POST',{version:1,text:'Missing page',page:3,x:.2,y:.4})).status,400);
+  assert.equal((await request(reviewer.cookie,pdfProof+'/comment','POST',{version:1,text:'Missing page',x:.2,y:.4})).status,400);
+  const pdfComment=(await request(owner.cookie,pdfProof)).body.comments[0];assert.equal(pdfComment.page,2);assert.equal(pdfComment.x,.2);assert.equal(pdfComment.y,.4);assert.equal((await request(other.cookie,pdfProof)).status,404);
  }finally{await new Promise(r=>server.close(r));api.close()}
 });
