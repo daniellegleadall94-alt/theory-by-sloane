@@ -90,3 +90,5 @@ Each item is only marked complete after relevant validation. Later requests to r
 - Asset-proofing continuation: stages reuse canonical workflow approval records, enforce current file access and ordered decisions, and invalidate approvals on replacement. Image pins, PDF page references, version comparisons and notification links implemented. Cross-company/version/role tests passed.
 
 - Asset review checkpoint: cancellation/restart preserves review history when reviewers change. All 46 API tests and model checks passed; production build passed. Authenticated visual review remains pending.
+
+- Contacts/suppliers: structured canonical contact records now support search, type/company filtering and archive/restore. Expenditure can link to a supplier with backend workspace/company checks. Existing simple contacts remain editable. No invitations or marketing consent are implied. Focused isolation/version/company-move tests and production build passed.
