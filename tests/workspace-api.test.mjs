@@ -101,6 +101,15 @@ test('organisation isolation, restricted business access, shared budgets, person
   assert.equal((await request(owner.cookie,'personal/data/task','POST',personal)).status,201);
   assert.equal((await request(member.cookie,'personal/data/task/private-task')).status,404);
   const ownTasks=(await request(owner.cookie,'my-work')).body.tasks;assert.equal(ownTasks.length,4);assert.ok(!ownTasks.some(t=>t.id==='first-task'&&t.organisationId===org));
+  const searchOwner=await request(owner.cookie,'search?q=launch');assert.equal(searchOwner.status,200);assert.ok(searchOwner.body.results.some(r=>r.id==='launch-idea'));
+  assert.equal((await request(outsider.cookie,'search?q=launch')).body.results.length,0);
+  assert.ok((await request(owner.cookie,'search?q=launch&kind=task')).body.results.every(r=>r.kind==='task'));
+  assert.equal((await request(owner.cookie,'search?q=launch&organisationId=personal')).body.results.length,0);
+  assert.equal((await request(owner.cookie,'search?q=launch&unitId='+second.id)).body.results.some(r=>r.id==='launch-idea'),false);
+  assert.equal((await request('', 'search?q=launch')).status,401);
+  const note=await request(owner.cookie,'notes','POST',{organisationId:org,title:'Private searchable memo',body:'Private evidence',category:'General',tags:[],colour:'sage',unitIds:[first.id]});assert.equal(note.status,201);
+  assert.equal((await request(owner.cookie,'search?q=searchable')).body.results.length,1);
+  assert.equal((await request(member.cookie,'search?q=searchable')).body.results.length,0);
   // Additive legacy imports never replace an existing server record.
   const imported=await request(owner.cookie,base+'/import','POST',{records:[{...task,kind:'task',title:'Do not replace',assigneeIds:[owner.body.user.id],campaign:''}]});assert.equal(imported.body.imported,0);
   assert.equal((await request(owner.cookie,base+'/data/task/first-task')).body.record.title,'Assigned task');
