@@ -21,13 +21,37 @@ test('organisation isolation, restricted business access, shared budgets, person
   const campaign={id:'shared-campaign',name:'Shared launch',end:'2026-11-30',budget:300,unitIds:[first.id,second.id],allocations:[{unitId:first.id,amount:100},{unitId:second.id,amount:200}]};
   assert.equal((await request(owner.cookie,base+'/data/campaign','POST',campaign)).status,201);
   assert.equal((await request(owner.cookie,base+'/data/campaign','POST',{...campaign,id:'bad-budget',allocations:[{unitId:first.id,amount:1}]})).status,400);
+  const measure={id:'leads',performanceMeasure:true,title:'Enquiries',target:50,actual:42,unit:'Enquiries',direction:'At least',periodStart:'2026-11-01',periodEnd:'2026-11-30',measuredAt:'2026-11-21',source:'CRM export',sourceUrl:'',campaignId:'shared-campaign',unitIds:[first.id]};
+  assert.equal((await request(owner.cookie,base+'/data/kpi','POST',measure)).status,201);
+  assert.equal((await request(owner.cookie,base+'/data/kpi','POST',{...measure,id:'bad-result',source:''})).status,400);
+  assert.equal((await request(owner.cookie,base+'/data/objective','POST',{id:'linked-objective',title:'Grow enquiries',kpi:'Enquiries',kpiId:'leads',unitIds:[first.id]})).status,201);
+  assert.equal((await request(owner.cookie,base+'/data/objective','POST',{id:'bad-link',title:'Invalid scope',kpiId:'leads',unitIds:[second.id]})).status,400);
+  assert.equal((await request(outsider.cookie,'organisations/'+otherOrg+'/data/objective','POST',{id:'bad-cross-link',title:'Invalid cross link',kpiId:'leads',unitIds:[]})).status,400);
   const summary=(await request(owner.cookie,base+'/summary')).body;assert.equal(summary.campaigns,1);assert.equal(summary.budget,300);assert.equal(summary.units.reduce((sum,u)=>sum+u.allocatedBudget,0),300);
   assert.equal((await request(owner.cookie,base+'/members/'+memberId,'PUT',{role:'member',accessScope:'selected',unitIds:[first.id]})).status,200);
   assert.equal((await request(member.cookie,base+'/data/campaign/shared-campaign')).status,404);
+  const expense={id:'shared-spend',financialEntry:true,title:'Artwork',amount:100,currency:'GBP',stage:'Committed',date:'2026-11-21',supplier:'Studio',channel:'Design',unitIds:[first.id,second.id],spendAllocations:[{unitId:first.id,campaignId:'shared-campaign',amount:60},{unitId:second.id,campaignId:'shared-campaign',amount:40}]};
+  assert.equal((await request(owner.cookie,base+'/data/expense','POST',expense)).status,201);
+  assert.equal((await request(member.cookie,base+'/data/expense/shared-spend')).status,404);
+  assert.equal((await request(outsider.cookie,base+'/data/expense/shared-spend')).status,403);
+  assert.equal((await request(owner.cookie,base+'/data/expense','POST',{...expense,id:'bad-spend',amount:101})).status,400);
+  assert.equal((await request(owner.cookie,base+'/data/expense','POST',{...expense,id:'wrong-campaign',spendAllocations:expense.spendAllocations.map(a=>({...a,campaignId:'not-here'}))})).status,400);
+  assert.equal((await request(owner.cookie,base+'/data/expense/shared-spend','PUT',{...expense,version:1,stage:'Actual'})).status,200);
+  assert.equal((await request(owner.cookie,base+'/data/expense/shared-spend','PUT',{...expense,version:1})).status,409);
+  assert.equal((await request(owner.cookie,base+'/data/expense/shared-spend','PUT',{...expense,version:2,financialEntry:false})).status,400);
+
   assert.equal((await request(member.cookie,base+'/summary')).body.budget,0);
   assert.deepEqual((await request(member.cookie,'organisations')).body.organisations[0].units.map(u=>u.id),[first.id]);
   const task={id:'first-task',title:'Assigned task',due:'2026-11-01',start:'2026-10-28',done:false,unitIds:[first.id],assigneeIds:[memberId],campaign:'shared-campaign'};
   assert.equal((await request(owner.cookie,base+'/data/task','POST',task)).status,201);
+  const review={id:'review-test',title:'Launch review',campaignReview:true,campaignId:'shared-campaign',unitIds:[first.id,second.id],status:'Draft',outcomes:'',worked:'',improve:'',nextSteps:'',actionTaskIds:['first-task']};
+  assert.equal((await request(owner.cookie,base+'/data/report','POST',review)).status,201);
+  assert.equal((await request(member.cookie,base+'/data/report/review-test')).status,404);
+  assert.equal((await request(owner.cookie,base+'/data/report','POST',{...review,id:'duplicate-review'})).status,409);
+  assert.equal((await request(owner.cookie,base+'/data/report/review-test','PUT',{...review,version:1,status:'Reviewed'})).status,400);
+  assert.equal((await request(owner.cookie,base+'/data/report/review-test','PUT',{...review,version:1,status:'Reviewed',outcomes:'42 enquiries',worked:'Useful creative',improve:'Earlier planning',nextSteps:'Repeat the successful format'})).status,200);
+  assert.equal((await request(owner.cookie,base+'/data/report/review-test/versions')).body.versions.length,2);
+
   assert.equal((await request(owner.cookie,base+'/data/task','POST',{...task,id:'invalid-assignee',unitIds:[second.id]})).status,400);
   const mine=(await request(member.cookie,'my-work')).body.tasks;assert.equal(mine.length,1);assert.equal(mine[0].campaignName,'');assert.equal(mine[0].organisationId,org);
   assert.equal((await request(member.cookie,base+'/data/task/first-task','PUT',{...task,done:true,version:1})).status,200);

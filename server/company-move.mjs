@@ -1,6 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 const fail=(status,message)=>{throw Object.assign(Error(message),{status})};
-const referenceFields=new Set(['campaign','groupId','parentId','parentTaskId','occurrenceOf','dependencyIds','taskIds','campaignIds','objectiveIds','goals','overviewId','strategyId','objectiveId','kpiId','budgetId','supplierId','resourceId','assetIds','fileIds','accountId','reviewTaskId','reviewEventId']);
+const referenceFields=new Set(['campaign','campaignId','groupId','parentId','parentTaskId','occurrenceOf','dependencyIds','taskIds','actionTaskIds','campaignIds','objectiveIds','goals','overviewId','strategyId','objectiveId','kpiId','budgetId','supplierId','resourceId','assetIds','fileIds','accountId','reviewTaskId','reviewEventId']);
 function references(value,result=[]){if(!value||typeof value!=='object')return result;for(const [key,item] of Object.entries(value)){if(referenceFields.has(key)){if(typeof item==='string'&&item)result.push(item);else if(Array.isArray(item))result.push(...item.filter(v=>typeof v==='string'))}else if(item&&typeof item==='object')references(item,result)}return result}
 const peopleFields=new Set(['accountableOwnerId','accountOwnerId','contributorIds','followerIds','sharedWith','authorisedUserIds','responsibleUserIds','attendeeIds']);
 function people(value){return Object.entries(value).filter(([key])=>peopleFields.has(key)).flatMap(([,item])=>Array.isArray(item)?item:typeof item==='string'&&item?[item]:[])}

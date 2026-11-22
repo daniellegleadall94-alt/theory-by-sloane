@@ -1,3 +1,5 @@
+import {validPerformance} from '../src/performanceModel.ts';
+import {validSpend} from '../src/budgetModel.ts';
 import {validObjective} from '../src/objectiveModel.ts';
 import {completionCycle,parentCycle,blockers} from '../src/workManagement.ts';
 import {validateAccount} from './account-register.mjs';
@@ -69,10 +71,29 @@ export function createWorkspaceLayer(db){
    if(org&&data.visibility==='private')fail(400,'Company calendar events are visible to authorised company members.');
   }
   if(kind==='strategy'&&(data?.strategyBuilder||existing&&JSON.parse(existing.data).strategyBuilder)&&!options.strategyBuilder)fail(403,'Use the strategy builder to update this record.');
+  if(kind==='kpi'&&(data?.performanceMeasure||existing&&JSON.parse(existing.data).performanceMeasure)){
+   if(!validPerformance(data))fail(400,'Check performance result, target, measurement period and source.');
+   if(data.campaignId){const linked=one("SELECT * FROM workspace_records WHERE scope=? AND kind='campaign' AND external_id=?",scopeOf(userId,org),data.campaignId);if(!linked||!canRead(userId,linked))fail(400,'Choose an accessible campaign in this workspace.');const units=unitsOf(linked);if(units.length&&(!data.unitIds?.length||data.unitIds.some(id=>!units.includes(id))))fail(400,'Choose a campaign associated with the same companies.');}
+  }
   if(kind==='objective'&&data){
+   if(data.kpiId){const linked=one("SELECT * FROM workspace_records WHERE scope=? AND kind='kpi' AND external_id=?",scopeOf(userId,org),data.kpiId);if(!linked||!canRead(userId,linked))fail(400,'Choose an accessible performance measure in this workspace.');const units=unitsOf(linked);if(units.length&&(!data.unitIds?.length||data.unitIds.some(id=>!units.includes(id))))fail(400,'Choose a performance measure for the same companies.');}
+
    if(!validObjective(data))fail(400,'Check the objective timeframe, target, KPI, progress and due date.');
    if(data.accountableOwnerId&&(org?!member(data.accountableOwnerId,org)||!canUnits(data.accountableOwnerId,org,data.unitIds||[]):data.accountableOwnerId!==userId))fail(400,'Choose an owner with access to this company.');
    for(const [field,linkedKind] of [['taskIds','task'],['campaignIds','campaign']])for(const id of data[field]||[]){const linked=one('SELECT * FROM workspace_records WHERE scope=? AND kind=? AND external_id=?',scopeOf(userId,org),linkedKind,id);if(!linked||!canRead(userId,linked))fail(400,'Choose accessible work from this workspace.');}
+  }
+  if(kind==='expense'&&(data?.financialEntry||existing&&JSON.parse(existing.data).financialEntry)){
+   if(!validSpend(data))fail(400,'Check expenditure dates, GBP amounts, stages and allocations.');
+   for(const allocation of data.spendAllocations)if(allocation.campaignId){const campaign=one("SELECT * FROM workspace_records WHERE scope=? AND kind='campaign' AND external_id=?",scopeOf(userId,org),allocation.campaignId);if(!campaign||!canRead(userId,campaign))fail(400,'Choose an accessible campaign in this workspace.');const companies=all('SELECT unit_id FROM record_units WHERE record_key=?',campaign.record_key).map(r=>r.unit_id);if(companies.length&&(!allocation.unitId||!companies.includes(allocation.unitId)))fail(400,'Allocate this campaign expenditure to one of its companies.');}
+  }
+  if(kind==='report'&&(data?.campaignReview||existing&&JSON.parse(existing.data).campaignReview)){
+   if(data.campaignReview!==true||typeof data.campaignId!=='string'||!['Draft','Reviewed'].includes(data.status)||['outcomes','worked','improve','nextSteps'].some(k=>typeof data[k]!=='string'||data[k].length>8000)||!Array.isArray(data.actionTaskIds)||data.actionTaskIds.length>100||data.actionTaskIds.some(id=>typeof id!=='string'))fail(400,'Check campaign review answers and follow-up tasks.');
+   if(existing&&JSON.parse(existing.data).campaignId!==data.campaignId)fail(400,'A review stays linked to its original campaign.');
+   if(data.status==='Reviewed'&&['outcomes','worked','improve','nextSteps'].some(k=>!data[k].trim()))fail(400,'Complete each review question before marking it Reviewed.');
+   const campaign=one("SELECT * FROM workspace_records WHERE scope=? AND kind='campaign' AND external_id=?",scopeOf(userId,org),data.campaignId);if(!campaign||!canRead(userId,campaign))fail(400,'Choose an accessible campaign.');
+   if(JSON.stringify([...(data.unitIds||[])].sort())!==JSON.stringify(unitsOf(campaign).sort()))fail(400,'A review must use the same company access as its campaign.');
+   if(!existing&&permittedRows(userId,org,'report').some(r=>{const value=JSON.parse(r.data);return value.campaignReview&&value.campaignId===data.campaignId}))fail(409,'This campaign already has a review. Refresh to open it.');
+   for(const id of data.actionTaskIds){const task=one("SELECT * FROM workspace_records WHERE scope=? AND kind='task' AND external_id=?",scopeOf(userId,org),id);if(!task||!canRead(userId,task)||JSON.parse(task.data).campaign!==data.campaignId)fail(400,'Link accessible tasks from this campaign.');}
   }
   if(kind==='account'&&data)validateAccount(data,{fail,org,userId,member,existing});
   if(!data||typeof data!=='object'||Array.isArray(data))fail(400,'Enter a valid record.');const title=data.title??data.name;if(typeof title!=='string'||!title.trim()||title.length>180)fail(400,'Enter a title or name up to 180 characters.');
