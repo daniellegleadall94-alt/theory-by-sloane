@@ -1,3 +1,4 @@
+import {purchaseFingerprint} from './purchase-approvals.mjs';
 import {validContact} from '../src/contactModel.ts';
 import {validPerformance} from '../src/performanceModel.ts';
 import {validSpend} from '../src/budgetModel.ts';
@@ -98,6 +99,12 @@ export function createWorkspaceLayer(db){
   }
   if(kind==='expense'&&(data?.financialEntry||existing&&JSON.parse(existing.data).financialEntry)){
    if(data.supplierId){const supplier=one("SELECT * FROM workspace_records WHERE scope=? AND kind='contact' AND external_id=?",scopeOf(userId,org),data.supplierId);if(!supplier||!canRead(userId,supplier)||JSON.parse(supplier.data).contactType!=='Supplier')fail(400,'Choose an accessible supplier in this workspace.');const units=unitsOf(supplier);if(units.length&&(!data.unitIds?.length||data.unitIds.some(id=>!units.includes(id))))fail(400,'Choose a supplier covering these companies.');}
+   if(!validSpend(data))fail(400,'Check expenditure dates, GBP amounts, stages and allocations.');if(data.purchaseApprovalRequired!==undefined&&typeof data.purchaseApprovalRequired!=='boolean')fail(400,'Choose a valid purchase approval setting.');
+   const oldExpense=existing?JSON.parse(existing.data):null;if(oldExpense?.purchaseApprovalRequired&&data.purchaseApprovalRequired!==true)fail(400,'Purchase approval cannot be removed from this expenditure.');
+   if(data.purchaseApprovalRequired&&data.stage!=='Planned'){
+    const approval=existing&&one("SELECT a.*,p.fingerprint FROM workflow_approvals a JOIN purchase_approval_details p ON p.approval_id=a.id WHERE a.record_key=? ORDER BY a.created_at DESC,a.rowid DESC LIMIT 1",existing.record_key);
+    if(!approval||approval.status!=='Granted'||approval.fingerprint!==purchaseFingerprint(data)||!['owner','admin','manager'].includes(member(approval.decision_by,org)?.role)||!canRead(approval.decision_by,existing))fail(400,'This purchase needs current approval before it can be committed or recorded as actual spend.');
+   }
    if(!validSpend(data))fail(400,'Check expenditure dates, GBP amounts, stages and allocations.');
    for(const allocation of data.spendAllocations)if(allocation.campaignId){const campaign=one("SELECT * FROM workspace_records WHERE scope=? AND kind='campaign' AND external_id=?",scopeOf(userId,org),allocation.campaignId);if(!campaign||!canRead(userId,campaign))fail(400,'Choose an accessible campaign in this workspace.');const companies=all('SELECT unit_id FROM record_units WHERE record_key=?',campaign.record_key).map(r=>r.unit_id);if(companies.length&&(!allocation.unitId||!companies.includes(allocation.unitId)))fail(400,'Allocate this campaign expenditure to one of its companies.');}
   }
