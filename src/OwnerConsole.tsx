@@ -1,3 +1,4 @@
+import {OwnerOrganisationControls} from './OwnerOrganisationControls';
 import {OwnerSupport} from './OwnerSupport';
 import {useEffect,useState,useRef} from 'react';
 import {ShieldCheck,ArrowUpRight,LayoutDashboard,Users,Building2,Wallet,Activity,ScrollText,LogOut,ArrowUp,ArrowDown,EyeOff,RotateCcw} from 'lucide-react';
@@ -106,13 +107,13 @@ export function OwnerConsole(){
 <h2>{key.replace(/([A-Z])/g,' $1')}</h2>
 <strong className="owner-health-value">{data[key]}</strong>
 </section>)}</div>
-<h2>Recorded workflow executions</h2>
+<h2>Local backup</h2><p>{data.backup.state} · Last successful archive: {data.backup.lastSuccess?new Date(data.backup.lastSuccess).toLocaleString('en-GB'):'None recorded'} · Restore verification: {data.backup.verified?'Passed':'Not recorded'} · Cloud upload: {data.backup.cloudUpload}</p><h2>Calendar connections</h2><Directory rows={data.calendarAccounts} columns={['provider','status','count']}/><p>{data.sync.enabled} syncs enabled · {data.sync.errors} sync errors · {data.sync.recordErrors} record errors · {data.sync.conflicts} pending confirmations</p><p className="owner-muted">Server running for {Math.floor(data.uptimeSeconds/60)} minutes. Checked {new Date(data.checkedAt).toLocaleString('en-GB')}.</p><h2>Recorded workflow executions</h2>
 <Directory rows={data.workflowRuns} columns={['status','count']}/>
 <p className="owner-muted">{data.note}</p>
 </>}{page==='audit'&&data&&<>
 <p className="owner-muted">Internal administrative events only. Passwords, tokens, notes and task content are excluded.</p>
 <Directory rows={data.events} columns={['created_at','actor','action','target']}/>
-</>}{busy&&<p role="status">Updating…</p>}{saved&&<p role="status">{saved}</p>}</>}{error&&<div className="owner-error" role="alert">{error}</div>}</main>{orgDetail&&<div className="owner-detail-backdrop"><section className="owner-detail" role="dialog" aria-modal="true" aria-label="Organisation metadata"><button autoFocus onClick={()=>setOrgDetail(null)}>Close</button><h2>{orgDetail.organisation.name}</h2><p>{orgDetail.organisation.id}</p><h3>Memberships and ownership</h3><Directory rows={orgDetail.members} columns={['name','email','role']}/><h3>Brands and business units</h3><Directory rows={orgDetail.brands} columns={['name','kind','parent_id','archived']}/><h3>Recorded subscription</h3><Directory rows={orgDetail.subscription?[orgDetail.subscription]:[]} columns={['plan','status','trial_started_at','trial_ends_at']}/><p className="owner-muted">Payment verification is not connected. {orgDetail.note}</p></section></div>}{detail&&<div className="owner-detail-backdrop">
+</>}{busy&&<p role="status">Updating…</p>}{saved&&<p role="status">{saved}</p>}</>}{error&&<div className="owner-error" role="alert">{error}</div>}</main>{orgDetail&&<div className="owner-detail-backdrop"><section className="owner-detail" role="dialog" aria-modal="true" aria-label="Organisation metadata"><button autoFocus onClick={()=>setOrgDetail(null)}>Close</button><h2>{orgDetail.organisation.name}</h2><p>{orgDetail.organisation.id}</p><OwnerOrganisationControls detail={orgDetail} permissions={session?.staff?.permissions||[]} onSave={async(action,body)=>{await api('organisations/'+orgDetail.organisation.id+'/'+action,body);await inspectOrg(orgDetail.organisation.id);await load()}}/><h3>Memberships and ownership</h3><Directory rows={orgDetail.members} columns={['name','email','role']}/><h3>Brands and business units</h3><Directory rows={orgDetail.brands} columns={['name','kind','parent_id','archived']}/><h3>Recorded subscription</h3><Directory rows={orgDetail.subscription?[orgDetail.subscription]:[]} columns={['plan','status','trial_started_at','trial_ends_at']}/><p className="owner-muted">Payment verification is not connected. {orgDetail.note}</p></section></div>}{detail&&<div className="owner-detail-backdrop">
 <section className="owner-detail" role="dialog" aria-modal="true" aria-label="Account metadata">
 <button onClick={()=>setDetail(null)} autoFocus>Close</button>
 <h2>{detail.user.name}</h2>

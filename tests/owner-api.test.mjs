@@ -28,6 +28,18 @@ test('Owner Console requires a separate MFA identity, enforces platform roles an
   for(const path of ['users','organisations','billing','technical','audit']){const result=await request('owner/'+path,{cookie:ownerCookie});assert.equal(result.status,200,path);assert.ok(!JSON.stringify(result.body).includes('PRIVATE TASK'));assert.ok(!JSON.stringify(result.body).includes('Customer test password'))}
   const details=(await request('owner/users/'+id,{cookie:ownerCookie})).body;assert.equal(details.memberships[0].id,org);assert.ok(!('password' in details.user));
   const organisation=(await request('owner/organisations/'+org,{cookie:ownerCookie})).body;assert.equal(organisation.members[0].role,'owner');assert.ok(!JSON.stringify(organisation).includes('PRIVATE TASK'));
+  const controlBody={version:0,confirmation:'Customer organisation',reason:'Support investigation',readOnly:true};
+  assert.equal((await request('owner/organisations/'+org+'/access',{cookie:customerCookie,method:'POST',body:controlBody})).status,401);
+  assert.equal((await request('owner/organisations/'+org+'/access',{cookie:ownerCookie,method:'POST',body:controlBody})).status,200);
+  assert.equal((await request('organisations/'+org+'/data/task',{cookie:customerCookie,method:'POST',body:{title:'Blocked task',due:'2026-12-01'}})).status,423);
+  assert.equal((await request('organisations/'+org+'/records',{cookie:customerCookie})).status,200);
+  assert.equal((await request('personal/data/task',{cookie:customerCookie,method:'POST',body:{title:'Personal remains writable',due:'2026-12-01'}})).status,201);
+  assert.equal((await request('owner/organisations/'+org+'/access',{cookie:ownerCookie,method:'POST',body:controlBody})).status,409);
+  assert.equal((await request('owner/organisations/'+org+'/access',{cookie:ownerCookie,method:'POST',body:{...controlBody,version:1,readOnly:false}})).status,200);
+  const afterControls=(await request('owner/organisations/'+org,{cookie:ownerCookie})).body;
+  assert.equal(afterControls.lifecycle.length,2);assert.equal(afterControls.controls.read_only,0);
+  assert.equal((await request('owner/organisations/'+org+'/trial',{cookie:ownerCookie,method:'POST',body:{...controlBody,version:2,expectedTrialEnd:afterControls.subscription.trial_ends_at,trialEndsAt:new Date(Date.now()+20*86400000).toISOString()}})).status,200);
+  assert.equal((await request('owner/organisations/'+org,{cookie:ownerCookie})).body.subscription.status,'trialing');
   assert.equal((await request('owner/users/'+id+'/suspend',{cookie:ownerCookie,method:'POST',body:{confirmation:'wrong'}})).status,400);
   assert.equal((await request('owner/users/'+id+'/suspend',{cookie:ownerCookie,method:'POST',body:{confirmation:'customer@owner.test'},originHeader:'https://evil.test'})).status,403);
   assert.equal((await request('owner/users/'+id+'/suspend',{cookie:ownerCookie,method:'POST',body:{confirmation:'customer@owner.test'}})).status,200);assert.equal((await request('settings/account',{cookie:customerCookie})).status,401);
@@ -35,7 +47,9 @@ test('Owner Console requires a separate MFA identity, enforces platform roles an
   assert.equal((await request('owner/users/'+id+'/reactivate',{cookie:ownerCookie,method:'POST',body:{confirmation:'customer@owner.test'}})).status,200);assert.equal((await signIn()).status,200);
   assert.equal((await request('owner/layout',{cookie:ownerCookie,method:'PUT',body:{layout:[{id:'users',hidden:true}]}})).status,200);assert.equal((await request('owner/layout',{cookie:ownerCookie})).body.layout[0].hidden,true);
   assert.equal((await request('owner/export',{cookie:ownerCookie,method:'POST',body:{confirmation:'EXPORT METRICS'}})).status,200);
+  const health=(await request('owner/technical',{cookie:ownerCookie})).body;assert.equal(health.backup.state,'Not configured');assert.equal(health.backup.cloudUpload,'Not verified');assert.deepEqual(health.calendarAccounts,[]);assert.equal(health.sync.enabled,0);assert.equal(typeof health.uptimeSeconds,'number');
   claims={...claims,sub:'support'};const supportCookie=(await login()).result.cookies.find(c=>c.startsWith('theory_owner=')).split(';')[0];assert.equal((await request('owner/users',{cookie:supportCookie})).status,200);for(const path of ['overview','billing','technical','audit'])assert.equal((await request('owner/'+path,{cookie:supportCookie})).status,403);assert.equal((await request('owner/users/'+id+'/suspend',{cookie:supportCookie,method:'POST',body:{confirmation:'customer@owner.test'}})).status,403);
+  assert.equal((await request('owner/organisations/'+org+'/access',{cookie:supportCookie,method:'POST',body:{...controlBody,version:3}})).status,403);
   claims={...claims,sub:'technical'};const techCookie=(await login()).result.cookies.find(c=>c.startsWith('theory_owner=')).split(';')[0];assert.equal((await request('owner/users',{cookie:techCookie})).status,403);assert.equal((await request('owner/technical',{cookie:techCookie})).status,200);
   const createdCase=await request('owner/support',{cookie:supportCookie,method:'POST',body:{subject:'Customer sign-in help',userId:id,priority:'Normal',note:'Asked for guidance.'}});assert.equal(createdCase.status,201);
   const caseId=createdCase.body.id;assert.equal((await request('owner/support',{cookie:customerCookie})).status,401);assert.equal((await request('owner/support',{cookie:techCookie})).status,403);
