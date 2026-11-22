@@ -67,7 +67,7 @@ export function createWorkManagementLayer(db,workspace){
   }
   if(path==='/api/work-management/bulk'&&req.method==='POST'){
    const body=await bodyOf(req);if(!['preview','apply'].includes(body.mode))fail(400,'Preview or apply the change.');
-   const patch=body.patch;if(!patch||!Object.keys(patch).length||Object.keys(patch).some(k=>!['plannedDate','priority','archived','status','accountableOwnerId'].includes(k)))fail(400,'Choose a supported bulk change.');
+   const patch=body.patch;if(!patch||!Object.keys(patch).length||Object.keys(patch).some(k=>!['plannedDate','priority','archived','status','accountableOwnerId','groupId'].includes(k)))fail(400,'Choose a supported bulk change.');
    if(patch.status!==undefined&&!['To do','In progress','In review','Done'].includes(patch.status)||patch.accountableOwnerId!==undefined&&(typeof patch.accountableOwnerId!=='string'||!patch.accountableOwnerId))fail(400,'Choose a valid status or accountable owner.');
    if(patch.plannedDate!==undefined&&patch.plannedDate!==''&&!validTaskDate(patch.plannedDate)||patch.priority!==undefined&&!['Low','Medium','High'].includes(patch.priority)||patch.archived!==undefined&&typeof patch.archived!=='boolean')fail(400,'Check the bulk change.');
    const result=workspace.transaction(()=>{
@@ -83,6 +83,13 @@ export function createWorkManagementLayer(db,workspace){
       if(task.recurrence&&task.recurrence.mode!=='none')fail(400,'Change recurring task progress individually so occurrence history is preserved.');
       change.done=patch.status==='Done';change.completedAt=change.done?(task.completedAt||new Date().toISOString()):undefined;
       change.completedBy=change.done?(task.completedBy||user.id):undefined;change.completedByName=change.done?(task.completedByName||user.name):undefined;
+     }
+     if(patch.groupId!==undefined){
+      if(patch.groupId){const target=one("SELECT * FROM workspace_records WHERE scope=? AND kind='group' AND external_id=?",row.scope,patch.groupId);if(!target||!workspace.canRead(user.id,target)||JSON.parse(target.data).archived)fail(400,'Choose an accessible active destination list.');}
+      const members=row.organisation_id?all('SELECT user_id FROM memberships WHERE company_id=?',row.organisation_id).map(m=>m.user_id):[user.id];
+      change.visibility='private';change.sharedWith=members.filter(id=>id!==row.owner_id&&workspace.canRead(id,row));
+      const candidate={...row,data:JSON.stringify({...task,...change})};
+      if(members.some(id=>workspace.canRead(id,candidate)&&!workspace.canRead(id,row)))fail(409,'This move would widen access. Review the task sharing individually first.');
      }
      workspace.validateData({...task,...change},'task',row.organisation_id,user.id,row);
      return change;

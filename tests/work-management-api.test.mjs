@@ -83,5 +83,16 @@ test('dependencies, private views, mentions, activity, capacity and atomic bulk 
   assert.equal((await request(cookie,'work-management/undo','POST',{undoId:completion.body.undoId})).status,200);
   const undone=(await request(cookie,root+'/data/task/bulk-owner')).body.record;assert.equal(undone.done,false);assert.equal(undone.completedAt,undefined);
   assert.equal((await request(cookie,'work-management/bulk','POST',{mode:'preview',items:[{id:recurring.id,version:recurring.version,organisationId:org}],patch:{status:'Done'}})).status,400);
+  const hiddenList=(await request(cookie,root+'/data/group','POST',{id:'hidden-list',name:'Private list',visibility:'private',sharedWith:[]})).body.record;
+  const teamList=(await request(cookie,root+'/data/group','POST',{id:'team-list',name:'Team list',visibility:'shared'})).body.record;
+  const hidden=await make('private-by-list',{groupId:hiddenList.id,assigneeIds:[owner.body.user.id]});
+  const hiddenItems=[{id:hidden.id,version:hidden.version,organisationId:org}];
+  assert.equal((await request(member.cookie,root+'/data/task/'+hidden.id)).status,404);
+  assert.equal((await request(cookie,'work-management/bulk','POST',{mode:'preview',items:hiddenItems,patch:{groupId:'missing-list'}})).status,400);
+  const move=await request(cookie,'work-management/bulk','POST',{mode:'apply',items:hiddenItems,patch:{groupId:teamList.id}});assert.equal(move.status,200,JSON.stringify(move.body));
+  assert.equal((await request(member.cookie,root+'/data/task/'+hidden.id)).status,404);
+  assert.equal((await request(cookie,root+'/data/task/'+hidden.id)).body.record.groupId,teamList.id);
+  assert.equal((await request(cookie,'work-management/undo','POST',{undoId:move.body.undoId})).status,200);
+  assert.equal((await request(cookie,root+'/data/task/'+hidden.id)).body.record.groupId,hiddenList.id);
  }finally{await new Promise(resolve=>server.close(resolve));api.close()}
 });
