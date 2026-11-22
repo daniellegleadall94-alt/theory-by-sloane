@@ -74,7 +74,11 @@ export function createWorkManagementLayer(db,workspace){
     const rows=checkRows(user.id,body.items);
     const changesFor=row=>{
      const task=workspace.result(row),change={...patch};
-     if(patch.accountableOwnerId!==undefined)change.assigneeIds=[...new Set([...(task.assigneeIds||[]),patch.accountableOwnerId])];
+     if(patch.accountableOwnerId!==undefined){
+      if(!workspace.canRead(patch.accountableOwnerId,row))fail(400,'The new owner must already have access to every selected task.');
+      change.assigneeIds=[...new Set([...(task.assigneeIds||[]),patch.accountableOwnerId])];
+      change.contributorIds=(task.contributorIds||[]).filter(id=>id!==patch.accountableOwnerId);
+     }
      if(patch.status!==undefined){
       if(task.recurrence&&task.recurrence.mode!=='none')fail(400,'Change recurring task progress individually so occurrence history is preserved.');
       change.done=patch.status==='Done';change.completedAt=change.done?(task.completedAt||new Date().toISOString()):undefined;

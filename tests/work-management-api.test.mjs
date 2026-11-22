@@ -69,6 +69,7 @@ test('dependencies, private views, mentions, activity, capacity and atomic bulk 
 
   const bulkOwner=await make('bulk-owner',{assigneeIds:[owner.body.user.id]});
   const selected=[{id:bulkOwner.id,version:bulkOwner.version,organisationId:org}];
+  assert.equal((await request(cookie,'work-management/bulk','POST',{mode:'preview',items:[{id:privateTask.id,version:privateTask.version,organisationId:org}],patch:{accountableOwnerId:memberId}})).status,400);
   assert.equal((await request(cookie,'work-management/bulk','POST',{mode:'preview',items:selected,patch:{accountableOwnerId:other.body.user.id}})).status,400);
   assert.equal((await request(cookie,'work-management/bulk','POST',{mode:'preview',items:selected,patch:{accountableOwnerId:memberId}})).status,200);
   assert.equal((await request(cookie,root+'/data/task/bulk-owner')).body.record.version,1);

@@ -21,7 +21,7 @@ const shift=(date:string,n:number)=>{const d=new Date(date+'T12:00:00Z');d.setUT
 export function weeklyWorkload(tasks:Task[],ownerId:string,week:string,capacity:Capacity){
  return rangeWorkload(tasks,ownerId,week,shift(week,6),capacity);
 }
-export function rangeWorkload(tasks:Task[],ownerId:string,week:string,end:string,capacity:Capacity){
+export function rangeWorkload(tasks:(Task&{forecastOf?:string})[],ownerId:string,week:string,end:string,capacity:Capacity){
  const active=tasks.filter(t=>!t.done&&!t.archived&&!t.occurrenceOf&&(t.accountableOwnerId||t.assigneeIds?.[0])===ownerId);
  const days=Array.from({length:Math.min(366,Math.round((Date.parse(end+'T12:00:00Z')-Date.parse(week+'T12:00:00Z'))/86400000)+1)},(_,i)=>shift(week,i));
  const working=(day:string)=>capacity.workingDays.includes(new Date(day+'T12:00:00Z').getUTCDay());
@@ -37,7 +37,7 @@ export function rangeWorkload(tasks:Task[],ownerId:string,week:string,end:string
   if(!share)return [];
   return [{task,hours:task.effortHours===undefined?null:Math.round(task.effortHours*share*100)/100}];
  });
- return {entries,hours:entries.reduce((n,e)=>n+(e.hours||0),0),capacity:Math.round(available*hours*100)/100,unestimated:entries.filter(e=>e.hours===null).length,overdue:active.filter(t=>!t.plannedDate&&t.due&&t.due<week).length,unscheduled:active.filter(t=>!t.plannedDate&&!t.start&&!t.due).length};
+ return {entries,hours:entries.reduce((n,e)=>n+(e.hours||0),0),capacity:Math.round(available*hours*100)/100,unestimated:entries.filter(e=>e.hours===null).length,overdue:active.filter(t=>!t.forecastOf&&!t.plannedDate&&t.due&&t.due<week).length,unscheduled:active.filter(t=>!t.forecastOf&&!t.plannedDate&&!t.start&&!t.due).length};
 }
 
 
