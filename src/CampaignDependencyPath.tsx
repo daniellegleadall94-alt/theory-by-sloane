@@ -1,0 +1,7 @@
+import React from 'react';
+import {campaignCriticalPath} from './criticalPath';
+import type {PortfolioRow} from './portfolio';
+export function CampaignDependencyPath({rows,onEdit}:{rows:PortfolioRow[];onEdit:(row:PortfolioRow)=>void}){
+ const result=campaignCriticalPath(rows.map(row=>row.task));
+ return <details className="panel settings-card"><summary>Dependency critical path</summary><p>Uses full recorded task spans in calendar days and finish-to-start links. A task with only a due date counts as one day. Completed work is excluded. This analysis does not account for working hours, resource limits or fixed start constraints, and does not move dates.</p>{result.issues.length?<ul>{result.issues.map(issue=><li key={issue}>{issue}</li>)}</ul>:!result.rows.length?<p>No open delivery tasks to analyse.</p>:<><p>Longest dependency chain: <strong>{result.duration} calendar days</strong>. Critical tasks have no spare time within this model.</p><div className="owner-table"><table><thead><tr><th>Task</th><th>Recorded span</th><th>Spare days</th><th>Path</th></tr></thead><tbody>{result.rows.map(r=><tr key={r.task.id}><th scope="row"><button className="text-button" onClick={()=>{const row=rows.find(row=>row.task.id===r.task.id);if(row)onEdit(row)}}>{r.task.milestone?'◇ ':''}{r.task.title}</button></th><td>{r.duration} days</td><td>{r.float}</td><td>{r.critical?'Critical':'Non-critical'}</td></tr>)}</tbody></table></div></>}</details>;
+}

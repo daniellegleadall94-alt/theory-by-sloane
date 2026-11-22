@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {campaignCriticalPath} from '../src/criticalPath.ts';
+import type {Task} from '../src/work.ts';
+const make=(id:string,days:number,parents:string[]=[]):Task=>({id,title:id,done:false,start:'2026-11-01',due:'2026-11-0'+days,dependencyIds:parents,campaign:'launch',priority:'Medium',discipline:'Email'});
+const tasks=[make('a',2),make('b',3,['a']),make('c',1,['a']),make('d',2,['b','c'])],result=campaignCriticalPath(tasks);
+assert.equal(result.duration,7);assert.deepEqual(result.rows.filter(r=>r.critical).map(r=>r.task.id),['a','b','d']);assert.equal(result.rows.find(r=>r.task.id==='c')?.float,2);
+assert.equal(campaignCriticalPath([{...tasks[0],done:true},...tasks.slice(1)]).duration,5);
+assert.equal(campaignCriticalPath([make('a',1,['missing'])]).rows.length,0);
+assert.equal(campaignCriticalPath([make('a',1,['b']),make('b',1,['a'])]).issues.length,1);
+assert.equal(campaignCriticalPath([{...make('a',1),due:''}]).issues.length,1);
+assert.equal(campaignCriticalPath([]).duration,0);
+console.log('Dependency analysis handles parallel paths, completed work, missing dates, inaccessible prerequisites and cycles.');
