@@ -4,7 +4,7 @@ import {DATA_EVENT,publishStoredKey,readLocal,readWorkspace,type PortfolioBrand}
 import type {Task} from './work';
 import type {MarketingPlan} from './overview';
 
-export type BusinessUnit={colour?:string;logo?:string;description?:string;website?:string;socialReferences?:string;contactInformation?:string;responsibleUserIds?:string[];sort_order?:number;id:string;organisation_id:string;name:string;kind:string;archived:boolean;channels:string[];parent_id?:string};
+export type BusinessUnit={channelExpectations?:Record<string,number>;colour?:string;logo?:string;description?:string;website?:string;socialReferences?:string;contactInformation?:string;responsibleUserIds?:string[];sort_order?:number;id:string;organisation_id:string;name:string;kind:string;archived:boolean;channels:string[];parent_id?:string};
 export type Organisation={nickname?:string;logo?:string;archived?:number;sort_order?:number;colour?:string;id:string;name:string;role:string;access_scope:string;unitLabel:string;disciplines:string[];units:BusinessUnit[];subscription:null|{status:string;plan:string;trial_started_at:string;trial_ends_at:string}};
 export type ScopedRecord={id:string;organisationId?:string|null;unitIds?:string[];assigneeIds?:string[];ownerId?:string;version?:number;kind?:string;[key:string]:unknown};
 type Selection={mode:'workspace'|'all-my-work';units:Record<string,string[]>};
@@ -67,6 +67,6 @@ export function WorkspaceProvider({children}:{children:React.ReactNode}){
  const choose=async(org:string|null,unitIds:string[]=[],allMyWork=false)=>{if(org&&!organisations.some(o=>o.id===org&&!o.archived))throw Error('This organisation is not authorised.');if(org&&unitIds.some(id=>!organisations.find(o=>o.id===org)?.units.some(u=>u.id===id&&!u.archived)))throw Error('Choose authorised active businesses.');if(company.user?.company?.id!==(org||undefined)&&!(org===null&&!company.user?.company))await company.switchWorkspace(org);const next:Selection={mode:allMyWork?'all-my-work':'workspace',units:{...selection.units,...(org?{[org]:unitIds}:{})}};localStorage.setItem(selectionKey,JSON.stringify(next));setSelection(next)};
  const matches=(record:{unitIds?:string[];brand?:string})=>!selectedUnitIds.length||!record.unitIds?.length||record.unitIds.some(id=>selectedUnitIds.includes(id));
  const allMyWork=selection.mode==='all-my-work';const contextLabel=allMyWork?'Everything':active?selectedUnitIds.length?selectedUnitIds.map(id=>units.find(u=>u.id===id)?.name).join(' + '):'All '+active.unitLabel:company.workspaceName;
- const brands=organisations.flatMap(o=>o.units.filter(u=>!u.archived&&!o.archived).map(u=>({id:u.id,name:u.name,workspace:`${owner}:${o.id}`,channels:u.channels})));
+ const brands=organisations.flatMap(o=>o.units.filter(u=>!u.archived&&!o.archived).map(u=>({id:u.id,name:u.name,workspace:`${owner}:${o.id}`,channels:u.channels,channelExpectations:u.channelExpectations})));
  return <WorkspaceContext.Provider value={{ready:ready&&loadedOwner===owner,organisations,selectedUnitIds,allMyWork,contextLabel,syncError,syncing,refresh:async()=>{await flushRef.current();await load()},choose,matches,inherit:()=>selectedUnitIds.length?selectedUnitIds:active?.access_scope==='selected'&&units.length===1?[units[0].id]:[],units,records,myTasks,brands,canManage:!!active&&['owner','admin'].includes(active.role)}}>{children}</WorkspaceContext.Provider>;
 }

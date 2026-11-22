@@ -32,3 +32,10 @@ const sharedBusinessRow={...row,channel:'Email',task:{...row.task,brand:'Old dis
 assert.equal(channelHealth({...configured,id:'stable-one',name:'Renamed business'},'Email',[sharedBusinessRow],'2026-10-26',7,'2026-10-28').count,1);
 assert.equal(channelHealth({...configured,id:'stable-two',name:'Second business'},'Email',[sharedBusinessRow],'2026-10-26',7,'2026-10-28').count,1);
 assert.equal(channelHealth({...configured,id:'unrelated'},'Email',[sharedBusinessRow],'2026-10-26',7,'2026-10-28').count,0);
+
+const frequencyBrand={...configured,channelExpectations:{Email:21}};
+assert.equal(channelHealth(frequencyBrand,'Email',[],'2026-10-26',7,'2026-10-28').state,'Review records');
+const completion={...row,channel:'Email',task:{...row.task,done:true,due:'2026-10-20',completedAt:'2026-10-20T12:00:00Z'}};
+assert.equal(channelHealth(frequencyBrand,'Email',[completion],'2026-10-26',7,'2026-10-28').reviewDue,false);
+assert.equal(channelHealth(frequencyBrand,'Email',[completion],'2026-11-16',7,'2026-11-17').reviewDue,true);
+assert.equal(channelHealth(frequencyBrand,'Email',[{...completion,task:{...completion.task,archived:true}}],'2026-10-26',7,'2026-10-28').lastCompleted,'');

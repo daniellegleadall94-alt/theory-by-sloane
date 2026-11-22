@@ -16,6 +16,10 @@ test('organisation hierarchy supports inline creation, ordering, colour, archive
  assert.equal((await req(stranger.cookie,base+'/unit-order','PUT',{ids:[a.id,b.id]})).status,403);
  assert.equal((await req(cookie,base+'/unit-order','PUT',{ids:[a.id,a.id]})).status,400);
  assert.equal((await req(cookie,base+'/units/'+a.id,'PUT',{...a,colour:'#4477aa'})).status,200);assert.equal((await req(cookie,base+'/units')).body.units.find(u=>u.id===a.id).colour,'#4477aa');
+ assert.equal((await req(cookie,base+'/units/'+a.id,'PUT',{...a,channelExpectations:{Email:21}})).status,200);
+ assert.equal((await req(cookie,base+'/units')).body.units.find(u=>u.id===a.id).channelExpectations.Email,21);
+ assert.equal((await req(cookie,base+'/units/'+a.id,'PUT',{...a,channelExpectations:{Email:0}})).status,400);
+ assert.equal((await req(cookie,base+'/units/'+a.id,'PUT',{...a,channelExpectations:{Unknown:21}})).status,400);
  const task=(await req(cookie,base+'/data/task','POST',{title:'Keep history',unitIds:[a.id],due:'2026-11-03',done:false})).body.record;
  assert.equal((await req(cookie,base+'/units/'+a.id,'PUT',{...a,archived:true})).status,200);assert.equal((await req(cookie,base+'/data/task/'+task.id)).body.record.title,'Keep history');
  assert.equal((await req(cookie,base+'/units/'+a.id,'PUT',{...a,archived:false})).status,200);

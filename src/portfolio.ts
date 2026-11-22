@@ -42,7 +42,7 @@ export function packSchedule(rows:PortfolioRow[],start:string,count:number){
 export const DATA_EVENT='theory:workspace-data';
 export const SCOPE_EVENT='theory:portfolio-scope';
 export const BRAND_EVENT='theory:manage-brands';
-export type PortfolioBrand={id:string;name:string;workspace:string;channels:string[]};
+export type PortfolioBrand={id:string;name:string;workspace:string;channels:string[];channelExpectations?:Record<string,number>};
 export type PortfolioChange={id:string;taskId:string;at:string;title:string;fields:string[];before?:Task;after?:Task;beforeWorkspace?:string;afterWorkspace?:string;beforeCampaign?:string;afterCampaign?:string};
 export const ownerOf=(workspace:string)=>workspace==='guest-personal'?'guest':workspace.split(':')[0];
 export const brandsKey=(owner:string)=>`theory.portfolio-brands.v1:${owner}`;
@@ -68,7 +68,12 @@ export function readWorkspace<T>(workspace:string,key:string,fallback:T):T{try{r
 export function publishStoredKey(key:string,value:unknown){const serialized=JSON.stringify(value),old=localStorage.getItem(key);if(old===serialized)return;localStorage.setItem(key,serialized);try{recordWorkspaceChanges(key,old?JSON.parse(old):[],value)}catch{/* A history failure must not discard the task edit. */}window.dispatchEvent(new CustomEvent(DATA_EVENT,{detail:{key}}))}
 export function publishWorkspace(workspace:string,key:string,value:unknown){publishStoredKey(workspaceStorage(workspace,key),value)}
 export function groupCampaignSchedule(rows:PortfolioRow[]){const groups=new Map<string,{id:string;name:string;company:string;rows:PortfolioRow[]}>();for(const row of rows){const id=row.workspace+':'+(row.task.campaign?'campaign:'+row.task.campaign:row.task.overviewId?'project:'+row.task.overviewId:'unassigned');if(!groups.has(id))groups.set(id,{id,name:row.campaignName||row.projectName||'Unassigned work',company:row.company,rows:[]});groups.get(id)!.rows.push(row)}return [...groups.values()].sort((a,b)=>a.company.localeCompare(b.company)||a.name.localeCompare(b.name))}
-export function channelHealth(brand:PortfolioBrand,channel:string,rows:PortfolioRow[],from:string,count:number,today:string){const matching=rows.filter(r=>r.workspace===brand.workspace&&(r.task.unitIds?.length?r.task.unitIds.includes(brand.id):(r.task.brand||r.company)===brand.name)&&r.channel===channel),scheduled=matching.filter(r=>r.task.due>=from&&taskStart(r.task)<=addDays(from,count-1)),overdue=matching.filter(r=>!r.task.done&&!!r.task.due&&r.task.due<today).length;return {count:scheduled.length,overdue,completed:scheduled.filter(r=>r.task.done).length,state:!brand.channels.includes(channel)?'Not used':overdue?'Overdue':!scheduled.length?'Gap':'Scheduled'} as const}
+export function channelHealth(brand:PortfolioBrand,channel:string,rows:PortfolioRow[],from:string,count:number,today:string){
+ const matching=rows.filter(r=>r.workspace===brand.workspace&&(r.task.unitIds?.length?r.task.unitIds.includes(brand.id):(r.task.brand||r.company)===brand.name)&&r.channel===channel&&!r.task.archived),scheduled=matching.filter(r=>r.task.due>=from&&taskStart(r.task)<=addDays(from,count-1)),overdue=matching.filter(r=>!r.task.done&&!!r.task.due&&r.task.due<today).length;
+ const completedDays=matching.filter(r=>r.task.done).map(r=>r.task.completedAt?.slice(0,10)||r.task.due).filter(day=>!!day&&day<=today).sort(),lastCompleted=completedDays.at(-1)||'',expectedDays=brand.channelExpectations?.[channel]||0;
+ const reviewDue=expectedDays>0&&(!lastCompleted||dayDistance(lastCompleted,today)>expectedDays);
+ return {count:scheduled.length,overdue,completed:scheduled.filter(r=>r.task.done).length,lastCompleted,expectedDays,reviewDue,recurringOverdue:matching.filter(r=>!r.task.done&&r.task.recurrence&&r.task.recurrence.mode!=='none'&&!!r.task.due&&r.task.due<today).length,state:!brand.channels.includes(channel)?'Not used':overdue?'Overdue':reviewDue?'Review records':!scheduled.length?'Gap':'Scheduled'} as const;
+}
 export function transferTask(source:Task[],target:Task[],task:Task){
  if(target.some(t=>t.id===task.id))throw Error('A task with this ID already exists in the destination.');
  const originals=source.filter(t=>t.id===task.id||t.occurrenceOf===task.id);const moved=originals.length?originals.map(t=>t.id===task.id?task:{...t,overviewId:task.overviewId,campaign:task.campaign,groupId:task.groupId,discipline:task.discipline,channel:task.channel,brand:task.brand}):[task];
