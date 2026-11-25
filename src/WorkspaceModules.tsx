@@ -5,22 +5,22 @@ import './asset-proofing.css';
 import {PasswordManager} from './PasswordManager';
 import React from 'react';
 import {Plus,X,Download,History} from 'lucide-react';
-import {companyApi,useCompany} from './Company';
+import {companyApi,useCompany,AccountGate} from './Company';
 import {useWorkspace,type ScopedRecord} from './WorkspaceContext';
 import {BusinessAssociation} from './OrganisationManagement';
 
 type Entry=ScopedRecord&{title:string;description?:string;status?:string;filename?:string;content?:string;mime?:string};
-export function WorkspaceModules({page}:{page:string}){
+export function WorkspaceModules({page,initialKind}:{page:string;initialKind?:string}){
  const {user}=useCompany(),workspace=useWorkspace(),org=user?.company?.id||null;
  const root=org?`organisations/${org}`:'personal';
  const choices=page==='Files & Knowledge'?[['file','Files'],['resource','Knowledge & templates']]:page==='Strategy & Objectives'?[['objective','Objectives'],['kpi','Performance measures']]:[['content','Content planning'],['post','Social media'],['email','Email'],['website','Website & SEO'],['advert','Paid advertising'],['pr','PR'],['event','Events'],['contact','Contacts'],['account','Marketing Accounts']];
  const [proofFile,setProofFile]=React.useState<Entry|null>(null);
- const [kind,setKind]=React.useState(choices[0][0]),[items,setItems]=React.useState<Entry[]>([]),[draft,setDraft]=React.useState<Entry|null>(null),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),[versions,setVersions]=React.useState<{version:number;updated_at:string;data:Entry}[]>([]);
+ const [kind,setKind]=React.useState(initialKind&&choices.some(([id])=>id===initialKind)?initialKind:choices[0][0]),[items,setItems]=React.useState<Entry[]>([]),[draft,setDraft]=React.useState<Entry|null>(null),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),[versions,setVersions]=React.useState<{version:number;updated_at:string;data:Entry}[]>([]);
  const load=React.useCallback(async()=>{if(!user)return;try{const result=await companyApi<{records:Entry[]}>(`${root}/data/${kind}`);setItems(result.records);setError('')}catch(e){setError((e as Error).message)}},[root,kind,user?.id]);
  React.useEffect(()=>{void load()},[load]);
  const perform=async(action:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await action();await load();await workspace.refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
  const download=(item:Entry)=>{if(!item.content)return;const bytes=Uint8Array.from(atob(item.content),c=>c.charCodeAt(0));const url=URL.createObjectURL(new Blob([bytes],{type:item.mime||'application/octet-stream'}));const a=document.createElement('a');a.href=url;a.download=item.filename||item.title;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
- if(!user)return <section className="panel"><h2>{page}</h2><p>Sign in using the workspace switcher to save and share records within your authorised organisations.</p></section>;
+ if(!user)return <AccountGate title="Save your work to your account" description="Sign in to create and manage records in your personal or company workspace."/>;
  if(kind==='content')return <><div className="toolbar"><select aria-label="Record type" value={kind} onChange={e=>setKind(e.target.value)}>{choices.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div><ContentPlanner/></>;
  if(kind==='contact')return <><div className="toolbar"><select aria-label="Record type" value={kind} onChange={e=>setKind(e.target.value)}>{choices.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div><ContactDirectory/></>;
  if(kind==='account')return <><div className="toolbar"><select aria-label="Record type" value={kind} onChange={e=>setKind(e.target.value)}>{choices.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div><PasswordManager company/></>;

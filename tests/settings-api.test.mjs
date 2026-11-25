@@ -28,6 +28,12 @@ test('settings persist, isolate accounts and organisations, protect security ope
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{density:'compact'})).status,200);
   assert.equal((await request(owner.cookie,'settings/account')).body.preferences.visibleMarketingChannels,'[]');
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{visibleMarketingChannels:''})).status,200);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{marketingTools:'["email","qr"]'})).status,200);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{density:'compact'})).status,200);
+  assert.equal((await request(owner.cookie,'settings/account')).body.preferences.marketingTools,'["email","qr"]');
+  assert.equal((await request(outsider.cookie,'settings/account')).body.preferences.marketingTools,undefined);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{marketingTools:'["unknown-paid-addon"]'})).status,400);
+  assert.equal((await request(owner.cookie,'settings/preferences','PUT',{marketingTools:'not-json'})).status,400);
   const pins=JSON.stringify(['My Calendar','Budget & Resources','Budget & Resources']);
   assert.equal((await request(owner.cookie,'settings/preferences','PUT',{navigationFavourites:pins})).status,200);
   assert.deepEqual(JSON.parse((await request(owner.cookie,'settings/account')).body.preferences.navigationFavourites),['My Calendar','Budget & Resources']);

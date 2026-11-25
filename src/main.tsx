@@ -1,3 +1,4 @@
+import {MarketingTools} from './MarketingTools';
 import {CampaignImport} from './CampaignImport';
 import {PurchaseReviewNotification} from './PurchaseApproval';
 import {WorkspaceSearch} from './WorkspaceSearch';
@@ -113,7 +114,8 @@ return <div className={'app '+(preferences.density==='compact'?'density-compact 
 {page==='Marketing Request Centre'&&<RequestCentre initialRequestId={requestId} onOpenCapacity={org=>void openOverviewLink(user!.id+':'+org,'Workload')} onOpenCampaign={(org,id)=>void openOverviewLink(user!.id+':'+org,'Campaigns & Projects',id)} onOpenTask={(task,workspace)=>setSharedTaskEditor({task,workspace})} onNavigate={go}/>}
 {isSettingsPage(page)&&<SettingsPage key={page+workspaceKey} section={page==='Workspace settings'?'My Profile':page.slice(11)}/>}
 {page==='Strategy & Objectives'&&<StrategyBuilder objectives={<WorkspaceModules page="Strategy & Objectives"/>}/>}
-{['Files & Knowledge','Marketing Tools'].includes(page)&&<WorkspaceModules key={page+workspaceKey} page={page}/>}
+{page==='Files & Knowledge'&&<WorkspaceModules key={page+workspaceKey} page={page}/>}
+{page==='Marketing Tools'&&<MarketingTools key={user?.id||'guest'}/>}
 {page==='Reporting & Analytics'&&<><PerformanceMeasures/><OrganisationReport/></>}
 {!isSettingsPage(page)&&!['Automations & Playbooks','Marketing Request Centre','Strategy & Objectives','Files & Knowledge','Marketing Tools','Reporting & Analytics','Marketing Overview','My Work','My Calendar','Notes & Ideas','My Passwords','My Learning','Workload','Marketing Disciplines','My Dashboard','Marketing HQ','My Planner','Campaigns & Projects','Marketing Calendar','Budget & Resources','My Inbox','Workspace settings'].includes(page)&&<section className="panel empty module-empty"><span className="module-icon"><Layers size={28}/></span><h2>A considered foundation.</h2><p>{page} is planned for a later development stage.<br/>Start with your planner and campaigns to put Theory to work.</p><button className="primary" onClick={()=>go('My Planner')}>Open The List <ArrowRight size={15}/></button></section>}
 </>}<footer><span>theory<span className="footer-dot"> / </span>Your marketing, connected.</span><span>Made for a more considered way of working. <CircleHelp size={14}/></span></footer></main></div>
