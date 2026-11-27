@@ -46,3 +46,4 @@
 .social-section-gate .account-gate{padding:0;margin:0;border:0;box-shadow:none;background:transparent}
 .social-section-gate .account-gate h2{font-size:21px;margin:0 0 12px}
 .social-section-gate .account-gate>p{font-size:13px;color:var(--muted);line-height:1.7}
+.social-demo-notice{padding:12px 16px;border:1px solid var(--line);background:var(--soft);color:var(--soft-ink);font-size:12px;line-height:1.6}
