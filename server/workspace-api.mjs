@@ -1,3 +1,4 @@
+import {validateSocial} from '../src/socialModel.ts';
 import {validCustomFields} from '../src/customFields.ts';
 import {notificationReady} from './notification-schedule.mjs';
 import {purchaseFingerprint} from './purchase-approvals.mjs';
@@ -70,6 +71,13 @@ export function createWorkspaceLayer(db,{emailConfigured=()=>false}={}){
  const result=row=>({...JSON.parse(row.data),id:row.external_id,organisationId:row.organisation_id,unitIds:unitsOf(row),ownerId:row.owner_id,assigneeIds:all('SELECT user_id FROM record_assignments WHERE record_key=?',row.record_key).map(x=>x.user_id),version:row.version,updatedAt:row.updated_at});
  const permittedRows=(userId,org,kind)=>all('SELECT * FROM workspace_records WHERE scope=?'+(kind?' AND kind=?':''),scopeOf(userId,org),...(kind?[kind]:[])).filter(r=>canRead(userId,r));
  const validateData=(data,kind,org,userId,existing,options={})=>{
+  if(kind==='post'&&(data?.socialStudio||existing&&JSON.parse(existing.data).socialStudio)){
+   if(existing&&one("SELECT name FROM sqlite_master WHERE type='table' AND name='social_deliveries'")&&one("SELECT id FROM social_deliveries WHERE record_key=? AND status IN ('queued','publishing','uncertain','published')",existing.record_key))fail(409,'Cancel or review this delivery before editing. Duplicate a published post to reuse it.');
+   try{validateSocial(data)}catch(e){fail(400,e.message)}
+   if(existing&&JSON.parse(existing.data).socialType!==data.socialType)fail(400,'Keep the social record type.');
+   const refs=[...(data.assetIds||[]).map(id=>[id,'file']),...(data.categoryIds||[]).map(id=>[id,'post']),...(data.categoryId?[[data.categoryId,'post']]:[]),...(data.campaign?[[data.campaign,'campaign']]:[])];
+   for(const [id,refKind] of refs){const linked=one('SELECT * FROM workspace_records WHERE scope=? AND kind=? AND external_id=?',scopeOf(userId,org),refKind,id);if(!linked||!canRead(userId,linked))fail(400,'Choose linked items available in this workspace.');const ids=unitsOf(linked);if(ids.length&&(!(data.unitIds||[]).length||data.unitIds.some(id=>!ids.includes(id))))fail(400,'Linked items must be available to all selected companies.');if(refKind==='post'&&JSON.parse(linked.data).socialType!=='category')fail(400,'Choose a social category.');}
+  }
   if(kind==='event'&&data?.calendarEvent){
    try{validateCalendarEvent(data);if(data.exceptions){if(typeof data.exceptions!=='object'||Array.isArray(data.exceptions)||Object.keys(data.exceptions).length>1000)throw Error('Too many event exceptions.');for(const [date,change] of Object.entries(data.exceptions)){if(!validTaskDate(date)||!change||typeof change!=='object'||Array.isArray(change))throw Error('Check event exceptions.');if(Object.keys(change).some(k=>!['title','start','end','allDay','timeZone','location','notes','attendees','attendeeIds','channel','colour','cancelled'].includes(k)))throw Error('Check event exception fields.');if(!change.cancelled)validateCalendarEvent({...data,...change,exceptions:undefined,recurrence:undefined})}}}catch(error){fail(400,error.message)}
    if(data.attendeeIds&&(!Array.isArray(data.attendeeIds)||data.attendeeIds.length>200||data.attendeeIds.some(id=>typeof id!=='string'||(org?!member(id,org):id!==userId))))fail(400,'Choose team members from this organisation.');

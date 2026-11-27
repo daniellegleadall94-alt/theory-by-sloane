@@ -1,3 +1,4 @@
+import {SocialStudio} from './SocialStudio';
 import {ContentPlanner} from './ContentPlanner';
 import {ContactDirectory} from './ContactDirectory';
 import {AssetProofing} from './AssetProofing';
@@ -20,6 +21,7 @@ export function WorkspaceModules({page,initialKind}:{page:string;initialKind?:st
  React.useEffect(()=>{void load()},[load]);
  const perform=async(action:()=>Promise<unknown>)=>{setBusy(true);setError('');try{await action();await load();await workspace.refresh()}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
  const download=(item:Entry)=>{if(!item.content)return;const bytes=Uint8Array.from(atob(item.content),c=>c.charCodeAt(0));const url=URL.createObjectURL(new Blob([bytes],{type:item.mime||'application/octet-stream'}));const a=document.createElement('a');a.href=url;a.download=item.filename||item.title;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+ if(kind==='post')return <SocialStudio/>;
  if(!user)return <AccountGate title="Save your work to your account" description="Sign in to create and manage records in your personal or company workspace."/>;
  if(kind==='content')return <><div className="toolbar"><select aria-label="Record type" value={kind} onChange={e=>setKind(e.target.value)}>{choices.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div><ContentPlanner/></>;
  if(kind==='contact')return <><div className="toolbar"><select aria-label="Record type" value={kind} onChange={e=>setKind(e.target.value)}>{choices.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></div><ContactDirectory/></>;

@@ -1,6 +1,6 @@
 export const marketingTools=[
  {id:'email',name:'Email marketing',category:'Campaigns',description:'Plan email campaigns, keep briefs and organise upcoming sends.',kind:'email',status:'Planning tools',note:'Email sending is not connected yet.'},
- {id:'social',name:'Social media',category:'Campaigns',description:'Organise social posts, campaign ideas and content briefs.',kind:'post',status:'Planning tools',note:'Direct publishing is not connected yet.'},
+ {id:'social',name:'Social media',category:'Campaigns',description:'Plan posts, organise media and build a consistent posting calendar.',kind:'post',status:'Social studio',note:'Connect accounts when platform setup is enabled.'},
  {id:'content',name:'Content planning',category:'Campaigns',description:'Turn ideas into briefs and track the tasks that bring them to life.',kind:'content',status:'Available',note:''},
  {id:'qr',name:'QR code generator',category:'Utilities',description:'Create downloadable QR codes for print, events and campaigns.',kind:'',status:'Coming soon',note:'Add to your profile for when this tool becomes available.'},
  {id:'utm',name:'UTM link builder',category:'Utilities',description:'Create consistent campaign tracking links for your marketing.',kind:'',status:'Coming soon',note:'Add to your profile for when this tool becomes available.'},

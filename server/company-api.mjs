@@ -1,3 +1,5 @@
+import {createSocialDelivery} from './social-delivery.mjs';
+import {createSocialConnections} from './social-connections.mjs';
 import {createMfa,requireMfaTransport} from './mfa.mjs';
 import {allowPersonalNotes} from './personal-notes.mjs';
 import {createTransactionalMail} from './transactional-mail.mjs';
@@ -33,7 +35,7 @@ const scrypt=promisify(derive);
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const email=value=>String(value||'').trim().toLowerCase();
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status})};
-export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,socialOptions,ownerOptions,calendarOptions,recoveryOptions}={}){
+export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,socialOptions,ownerOptions,calendarOptions,recoveryOptions,socialPublishingOptions}={}){
  if(databasePath!==':memory:')mkdirSync(dirname(databasePath),{recursive:true});
  const db=new DatabaseSync(databasePath);db.exec(`PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
  CREATE TABLE IF NOT EXISTS companies(id TEXT PRIMARY KEY,name TEXT NOT NULL);
@@ -51,7 +53,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
  if(!all('PRAGMA table_info(users)').some(c=>c.name==='personal_logo'))db.exec("ALTER TABLE users ADD COLUMN personal_logo TEXT NOT NULL DEFAULT ''");
  if(!all('PRAGMA table_info(companies)').some(c=>c.name==='logo'))db.exec("ALTER TABLE companies ADD COLUMN logo TEXT NOT NULL DEFAULT ''");
  db.exec('CREATE TABLE IF NOT EXISTS note_preferences(note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,user_id TEXT NOT NULL REFERENCES users(id),pinned INTEGER NOT NULL DEFAULT 0,archived INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(note_id,user_id))');
- const workspaceLayer=createWorkspaceLayer(db,{emailConfigured:createTransactionalMail({env:socialOptions?.env||process.env,...recoveryOptions}).configured});const search=createSearch(db,workspaceLayer);const strategyLayer=createStrategyLayer(db,workspaceLayer);const calendarLayer=createCalendarLayer(db);const calendarConnections=createCalendarConnections(db,{workspace:workspaceLayer,databasePath,env:socialOptions?.env||process.env,...calendarOptions});const workManagement=createWorkManagementLayer(db,workspaceLayer);const taskImports=createTaskImportLayer(db,workspaceLayer);const aiLayer=createAiLayer(db,{databasePath,fetchImpl:aiFetch});const socialAuth=createSocialAuth(db,socialOptions);
+ const workspaceLayer=createWorkspaceLayer(db,{emailConfigured:createTransactionalMail({env:socialOptions?.env||process.env,...recoveryOptions}).configured});const search=createSearch(db,workspaceLayer);const strategyLayer=createStrategyLayer(db,workspaceLayer);const calendarLayer=createCalendarLayer(db);const calendarConnections=createCalendarConnections(db,{workspace:workspaceLayer,databasePath,env:socialOptions?.env||process.env,...calendarOptions});const workManagement=createWorkManagementLayer(db,workspaceLayer);const taskImports=createTaskImportLayer(db,workspaceLayer);const aiLayer=createAiLayer(db,{databasePath,fetchImpl:aiFetch});const socialAuth=createSocialAuth(db,socialOptions);const socialConnections=createSocialConnections(db,workspaceLayer,{databasePath,env:socialOptions?.env||process.env,...socialPublishingOptions});const socialDelivery=createSocialDelivery(db,workspaceLayer,socialConnections,{enabled:(socialOptions?.env||process.env).THEORY_SOCIAL_PUBLISHING_ENABLED==='true',...socialPublishingOptions});
  const validLogo=value=>{if(value==='')return true;if(typeof value!=='string'||value.length>48000||!/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(value))return false;const bytes=Buffer.from(value.split(',')[1],'base64');return bytes.length>=20&&bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP'};
  const settingsLayer=createSettingsLayer(db,{workspaceLayer,validLogo,mailOptions:{env:socialOptions?.env||process.env,...recoveryOptions}});const invitationEmail=createInvitationEmail(db,workspaceLayer,{audit:settingsLayer.audit,env:socialOptions?.env||process.env,...recoveryOptions});const vaultLayer=createVaultLayer(db,workspaceLayer,{audit:settingsLayer.audit});const requestLayer=createRequestLayer(db,workspaceLayer);const workflowLayer=createWorkflowLayer(db,workspaceLayer,requestLayer);const purchaseApprovals=createPurchaseApprovals(db,workspaceLayer,{audit:settingsLayer.audit});const assetProofing=createAssetProofing(db,workspaceLayer,{audit:settingsLayer.audit});const companyMoves=createCompanyMoves(db,workspaceLayer,{audit:settingsLayer.audit});const mfa=createMfa(db,{databasePath,audit:settingsLayer.audit});const ownerLayer=createOwnerLayer(db,{databasePath,mfa,...ownerOptions});const activity=createActivity(db);const recovery=createAccountRecovery(db,{env:socialOptions?.env||process.env,...recoveryOptions});const accountEmail=createAccountEmail(db,{env:socialOptions?.env||process.env,...recoveryOptions});const attempts=new Map();
  const profile=user=>({avatar:JSON.parse(one('SELECT profile FROM user_settings WHERE user_id=?',user.id)?.profile||'{}').avatar||'',id:user.id,name:user.name,email:user.email,role:user.role,personalNickname:user.personal_nickname||'',personalLogo:one('SELECT personal_logo FROM users WHERE id=?',user.id)?.personal_logo||'',company:user.company_id?{id:user.company_id,name:one('SELECT name FROM companies WHERE id=?',user.company_id).name,logo:one('SELECT logo FROM companies WHERE id=?',user.company_id).logo,nickname:one('SELECT nickname FROM memberships WHERE user_id=? AND company_id=?',user.id,user.company_id)?.nickname||''}:null,companies:all('SELECT companies.id,companies.name,companies.logo,memberships.role,memberships.nickname FROM memberships JOIN companies ON companies.id=memberships.company_id WHERE user_id=? AND companies.archived=0 ORDER BY companies.sort_order,companies.name',user.id)});
@@ -63,6 +65,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
   let path=new URL(req.url,'http://localhost').pathname;let explicitNoteScope=false;if(!path.startsWith('/api/'))return next();
   let auditUser=null;const send=(status,data)=>{if(status>=200&&status<300&&req.method!=='GET'&&path!=='/api/activity/presence'){const actor=auditUser?.id||data?.user?.id;if(actor){const scope=path.match(/^\/api\/(?:(?:settings|vault)\/)?organisations\/([^/]+)/)?.[1]||(path.startsWith('/api/company-')?auditUser?.company_id:null);settingsLayer.audit(actor,scope||null,req.method+' '+path)}}res.statusCode=status;res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.end(JSON.stringify(data))};
   try{
+   if(await socialDelivery.media({req,res,path})!==false)return;
    if(await calendarConnections.webhook({req,res,path,bodyOf})!==false)return;
    if(!['GET','POST','PUT','DELETE'].includes(req.method))fail(405,'Method not allowed.');
    if(req.method!=='GET'){
@@ -90,6 +93,8 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
    }
    if(await accountEmail.handle({req,path,user,bodyOf,send})!==false)return;
    if(await socialAuth.handle({req,res,path,user,token,bodyOf,send,session})!==false)return;
+   if(await socialDelivery.handle({req,path,user,bodyOf,send})!==false)return;
+   if(await socialConnections.handle({req,res,path,user,token,bodyOf,send})!==false)return;
    if(await calendarConnections.handle({req,res,path,user,token,bodyOf,send})!==false)return;
    if(path==='/api/session'&&req.method==='GET')return send(200,{user:user?profile(user):null});
    if(['/api/auth/register','/api/auth/login'].includes(path)&&req.method==='POST'){
@@ -155,7 +160,7 @@ export function createCompanyApi({databasePath='.data/theory.sqlite',aiFetch,soc
  }
  const notificationSources=[['request:','marketing_request_notifications',requestLayer],['workflow:','workflow_notifications',workflowLayer]].map(([prefix,table,layer])=>({prefix,allowed:layer.canNotify,list:()=>all(`SELECT * FROM ${table} WHERE read_at IS NULL`).map(n=>({...n,id:prefix+n.id})),load:id=>{const n=one(`SELECT * FROM ${table} WHERE id=?`,id);return n?{...n,id:prefix+n.id}:null}}));
  const notificationEmail=createNotificationEmail(db,workspaceLayer,{sources:notificationSources,env:socialOptions?.env||process.env,...recoveryOptions});
- workspaceLayer.startReminders();calendarConnections.start();notificationEmail.start();
- return {middleware,runNotificationEmails:notificationEmail.tick,flushRecovery:recovery.flush,runReminders:workspaceLayer.runReminders,runStrategyReviews:strategyLayer.runReviews,runWorkflows:workflowLayer.tick,close:()=>{notificationEmail.close();recovery.close();calendarConnections.close();strategyLayer.close();workflowLayer.close();requestLayer.close();workspaceLayer.close();db.close()}};
+ socialDelivery.start();workspaceLayer.startReminders();calendarConnections.start();notificationEmail.start();
+ return {middleware,runSocialDeliveries:socialDelivery.tick,runNotificationEmails:notificationEmail.tick,flushRecovery:recovery.flush,runReminders:workspaceLayer.runReminders,runStrategyReviews:strategyLayer.runReviews,runWorkflows:workflowLayer.tick,close:()=>{socialDelivery.close();notificationEmail.close();recovery.close();calendarConnections.close();strategyLayer.close();workflowLayer.close();requestLayer.close();workspaceLayer.close();db.close()}};
 }
 
